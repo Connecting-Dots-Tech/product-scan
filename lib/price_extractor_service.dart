@@ -66,7 +66,8 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
       print("Recognized Text: ${recognizedText.text}");
       _textRecognizer.close();
       // Extract price using NER
-      String nerPrice = await _extractPriceUsingNER(recognizedText.text);
+      String nerPrice = await _extractPriceUsingRegex(recognizedText.text);
+      //String nerPrice = await _extractPriceUsingNER(recognizedText.text);
 
       setState(() {
         _extractedPrice = nerPrice;
@@ -89,6 +90,31 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
       return annotation.text;
     }
 
+    return "No price found";
+  }
+
+  Future<String> _extractPriceUsingRegex(String text) async {
+    // First regex to match numbers with two decimal places or numbers followed by '/-'
+    final priceRegExp = RegExp(r'\b\d+\.\d{2}\b|\b\d+/-(?=\s|$)');
+    final match = priceRegExp.firstMatch(text);
+
+    if (match != null) {
+      print("Price found using first regex: ${match.group(0)}");
+      return match.group(0) ?? "No price found";
+    } else {
+      // Second regex to match Rs, mrp, ₹, or rp followed by a number,
+      final fallbackPriceRegExp =
+          RegExp(r'\b(?:Rs|mrp|₹|rp)[\s\.:/-]*\d+\b', caseSensitive: false);
+
+      final fallbackMatch = fallbackPriceRegExp.firstMatch(text);
+
+      if (fallbackMatch != null) {
+        print("Price found using fallback regex: ${fallbackMatch.group(0)}");
+        return fallbackMatch.group(0) ?? "No price found";
+      }
+    }
+
+    print("No price found");
     return "No price found";
   }
 
