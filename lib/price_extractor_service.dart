@@ -100,63 +100,154 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
 
     if (match != null) {
       print("Price found using first regex: ${match.group(0)}");
-      return match.group(0) ?? "No price found";
+      // Clean the extracted value
+      return _cleanPrice(match.group(0) ?? "No price found");
     } else {
-      // Second regex to match Rs, mrp, ₹, or rp followed by a number,
-      final fallbackPriceRegExp =
-          RegExp(r'\b(?:Rs|mrp|₹|rp)[\s\.:/-]*\d+\b', caseSensitive: false);
+      // Second regex to match Rs, mrp, ₹, or rp followed by a number
+      final fallbackPriceRegExp = RegExp(
+          r'\b(?:Rs|mrp|₹|rp)[\s\.:/-]*\d+(\.\d{1,2})?\b(?!\s*(?:[Pp]er\s+\d+|per\s*gram|per\s*g|/g))',
+          caseSensitive: false);
 
       final fallbackMatch = fallbackPriceRegExp.firstMatch(text);
 
       if (fallbackMatch != null) {
         print("Price found using fallback regex: ${fallbackMatch.group(0)}");
-        return fallbackMatch.group(0) ?? "No price found";
+        // Clean the extracted value
+        return _cleanPrice(fallbackMatch.group(0) ?? '');
       }
     }
 
     print("No price found");
-    return "No price found";
+    return '';
+  }
+
+// Post-processing to clean unwanted characters
+  String _cleanPrice(String price) {
+    // Remove the currency symbols and prefixes (Rs., MRP., ₹, etc.)
+    final cleanPrice = price.replaceAll(
+        RegExp(r'^(Rs\.|mrp\.|₹|rp)[\s\.:/-]*', caseSensitive: false), '');
+
+    // Remove any characters like /-, / or anything after the price
+    final finalPrice = cleanPrice.replaceAll(RegExp(r'[\s/,-].*$'), '');
+
+    // Return the cleaned numeric price value
+    return finalPrice.trim();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Price Extractor"),
+        backgroundColor: Colors.blue,
+        title: Text(
+          "PRICE EXTRACTOR",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
         centerTitle: true,
       ),
+      floatingActionButtonLocation:
+          FloatingActionButtonLocation.miniCenterFloat,
+      floatingActionButton: FloatingActionButton.large(
+        backgroundColor: Colors.green[100],
+        child: Icon(
+          Icons.camera,
+          size: 60,
+          color: Colors.green[900],
+        ),
+        onPressed: _isProcessing ? null : _processImage,
+      ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 10),
+        padding: const EdgeInsets.all(5),
         child: Column(
           children: [
+            SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.01,
+            ),
+            Container(
+              padding: EdgeInsets.all(10),
+              height: MediaQuery.sizeOf(context).height * 0.07,
+              decoration: BoxDecoration(
+                color: Colors.grey[300], // Light green background
+                borderRadius: BorderRadius.circular(12), // Rounded corners
+                border: Border.all(
+                  color: Colors.black, // Dark green border
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.3),
+                    spreadRadius: 2,
+                    blurRadius: 5,
+                    offset: Offset(2, 3), // Adds a slight shadow
+                  ),
+                ],
+              ),
+              child: _isProcessing
+                  ? CircularProgressIndicator(
+                      color: Colors.blueGrey,
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.currency_rupee_outlined, // Currency icon
+                          color: _extractedPrice.isEmpty
+                              ? Colors.red
+                              : Colors.green[800],
+                          size: 30,
+                        ),
+                        SizedBox(width: 5),
+                        Text(
+                          _extractedPrice.isEmpty
+                              ? "No Price found"
+                              : _extractedPrice,
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: _extractedPrice.isEmpty
+                                ? Colors.red
+                                : Colors.green[800],
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+            SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.01,
+            ),
+            Text("Scan the price tag here"),
+
             if (_isCameraInitialized)
-              Expanded(child: Center(child: CameraPreview(_cameraController))),
-            Text(
-              "Extracted Price: ",
-              style: TextStyle(fontSize: 17),
-            ),
-            Text(
-              _extractedPrice,
-              style: TextStyle(
-                  fontSize: 23,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green[800]),
-            ),
+              Center(
+                child: AspectRatio(
+                  aspectRatio: 2 / 2.9,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(
+                        20), // Adjust the radius as needed
+                    child: CameraPreview(_cameraController),
+                  ),
+                ),
+              ),
+            // Text(
+            //   "Extracted Price: ",
+            //   style: TextStyle(fontSize: 17),
+            // ),
+
             SizedBox(
               height: 20,
             ),
-            MaterialButton(
-              minWidth: MediaQuery.sizeOf(context).width * 0.5,
-              height: 80,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-              color: Colors.lightGreenAccent[200],
-              onPressed: _isProcessing ? null : _processImage,
-              child: Text(
-                "Click",
-                style: TextStyle(fontSize: 25),
-              ),
-            ),
+            // MaterialButton(
+            //   minWidth: MediaQuery.sizeOf(context).width * 0.5,
+            //   height: MediaQuery.sizeOf(context).height * 0.08,
+            //   shape: RoundedRectangleBorder(
+            //       borderRadius: BorderRadius.circular(10)),
+            //   color: Colors.lightGreenAccent[200],
+            //   onPressed: _isProcessing ? null : _processImage,
+            //   child: Text(
+            //     "Click",
+            //     style: TextStyle(fontSize: 25),
+            //   ),
+            // ),
           ],
         ),
       ),
