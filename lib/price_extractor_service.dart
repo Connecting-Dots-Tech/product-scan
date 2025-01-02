@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -8,7 +10,6 @@ class PriceExtractorNERApp extends StatefulWidget {
   const PriceExtractorNERApp({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _PriceExtractorNERAppState createState() => _PriceExtractorNERAppState();
 }
 
@@ -17,6 +18,7 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
   bool _isCameraInitialized = false;
   bool _isProcessing = false;
   final TextRecognizer _textRecognizer = TextRecognizer();
+
   late EntityExtractor _entityExtractor;
   String _extractedPrice = "";
 
@@ -65,12 +67,42 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
       final recognizedText = await _textRecognizer.processImage(inputImage);
       print("Recognized Text: ${recognizedText.text}");
       _textRecognizer.close();
-      // Extract price using NER
-      String nerPrice = await _extractPriceUsingRegex(recognizedText.text);
-      //String nerPrice = await _extractPriceUsingNER(recognizedText.text);
+
+      // Extract price using your existing logic
+      final List<String> priceKeywords = [
+        'Rs',
+        'M.R.P',
+        'Maximum Retail Price',
+        '₹',
+        'rp',
+        'MRP',
+        'Rupees',
+        'Price'
+      ];
+
+      // Extract horizontally aligned text and combine with the keyword
+      String combinedText =
+          _extractCombinedText(recognizedText.blocks, priceKeywords);
+      print("Combined Text before preprocessing: $combinedText");
+
+      // Preprocess the combined text before extracting price
+      String preprocessedText =
+          _preprocessTextForEntityExtraction(combinedText);
+      print("Preprocessed Combined Text: $preprocessedText");
+
+      // Try extracting price using NER
+      String extractedPrice = await _extractPriceUsingNER(preprocessedText);
+
+      // Fallback to regex if NER fails (returns empty string)
+      if (extractedPrice.isEmpty) {
+        print("NER extraction failed. Falling back to regex.");
+        extractedPrice = _extractPriceUsingRegex(preprocessedText);
+      }
+
+      print("Extracted Price: $extractedPrice");
 
       setState(() {
-        _extractedPrice = nerPrice;
+        _extractedPrice = extractedPrice;
       });
     } catch (e) {
       print("Error processing image: $e");
@@ -81,19 +113,144 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
     }
   }
 
+// Function to extract horizontally or vertically aligned text based on keywords
+  String _extractCombinedText(List<TextBlock> blocks, List<String> keywords) {
+    Rect? keywordBoundingBox;
+    String? keywordText;
+
+    // Create a regular expression from the list of keywords
+    final keywordRegex = RegExp(
+      r'\b(?:' +
+          keywords.map((k) => RegExp.escape(k)).join('|') +
+          r')[\.:₹7RZF/-]*\b',
+      caseSensitive: false,
+    );
+
+    // Find the keyword and its bounding box
+    for (TextBlock block in blocks) {
+      for (TextLine line in block.lines) {
+        if (keywordRegex.hasMatch(line.text)) {
+          keywordBoundingBox = line.boundingBox;
+          keywordText = line.text;
+          print(line.recognizedLanguages);
+          break;
+        }
+      }
+      if (keywordBoundingBox != null) break;
+    }
+
+    if (keywordBoundingBox == null || keywordText == null) {
+      print("No keyword found");
+      return '';
+    }
+
+    // Function to calculate the distance between two bounding boxes
+    double calculateDistance(Rect rect1, Rect rect2) {
+      final dx = (rect1.center.dx - rect2.center.dx).abs();
+      final dy = (rect1.center.dy - rect2.center.dy).abs();
+      return sqrt(dx * dx + dy * dy);
+    }
+
+    // Find the closest numeric value to the keyword bounding box in any direction
+    String? closestNumericText;
+    double closestDistance = double.infinity;
+
+    // Regular expression to match numeric values
+    final numericRegex = RegExp(
+        r'\b\d+([.,]\d{1,2})?\b'); // Matches numbers like 1000, 1000.50, 1,000.50
+
+    for (TextBlock block in blocks) {
+      for (TextLine line in block.lines) {
+        Rect lineBoundingBox = line.boundingBox;
+
+        // Skip the keyword itself
+        if (lineBoundingBox == keywordBoundingBox) continue;
+
+        // Check if the text contains a numeric value
+        if (numericRegex.hasMatch(line.text)) {
+          // Calculate the distance between the keyword and the current line
+          double distance =
+              calculateDistance(keywordBoundingBox, lineBoundingBox);
+
+          // Check if this line is closer than the previous closest line
+          if (distance < closestDistance) {
+            // Ensure the numeric line is either vertically or horizontally aligned
+            if ((lineBoundingBox.center.dx - keywordBoundingBox.center.dx)
+                        .abs() <
+                    keywordBoundingBox.width ||
+                (lineBoundingBox.center.dy - keywordBoundingBox.center.dy)
+                        .abs() <
+                    keywordBoundingBox.height) {
+              closestDistance = distance;
+              closestNumericText = line.text;
+            }
+          }
+        }
+      }
+    }
+
+    if (closestNumericText != null) {
+      // Combine the keyword and the closest numeric value into a money-recognizable format
+      return "$keywordText $closestNumericText"
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    }
+
+    print("No numeric text found near the keyword");
+    return keywordText; // Return only the keyword if no numeric value is found
+  }
+
+  String _preprocessTextForEntityExtraction(String text) {
+    final List<String> priceKeywords = [
+      'Rs',
+      'M.R.P',
+      'Maximum Retail Price',
+      '₹',
+      'rp',
+      'MRP',
+      'Rupees',
+      'Price'
+    ];
+
+    String preprocessedText = text;
+
+    // Loop through each keyword in the list and apply the replacement
+    for (var keyword in priceKeywords) {
+      // Create a regex pattern to match the keyword followed by optional punctuation marks
+      preprocessedText = preprocessedText.replaceAllMapped(
+        RegExp(r'\b' + RegExp.escape(keyword) + r'[\.:,;-]?\b',
+            caseSensitive: false),
+        (match) {
+          // Extract the keyword, and replace it with ₹ while preserving the punctuation
+          var matchedText = match.group(0)!;
+          var replacedText = '₹' +
+              matchedText.substring(keyword.length); // Keep punctuation intact
+          return replacedText;
+        },
+      );
+    }
+
+    return preprocessedText;
+  }
+
   // Method to extract price using Named Entity Recognition (NER)
   Future<String> _extractPriceUsingNER(String text) async {
     final List<EntityAnnotation> entityAnnotations = await _entityExtractor
         .annotateText(text, entityTypesFilter: [EntityType.money]);
 
     for (var annotation in entityAnnotations) {
-      return annotation.text;
+      print("Raw NER Extracted Text: ${annotation.text}");
+      // Apply the cleanPrice method to clean the extracted price
+      final cleanedPrice = _cleanPrice(annotation.text);
+      print("Cleaned NER Extracted Text: $cleanedPrice");
+      return cleanedPrice;
     }
 
-    return "No price found";
+    return '';
   }
 
-  Future<String> _extractPriceUsingRegex(String text) async {
+  //fallback method to extract price
+  String _extractPriceUsingRegex(String text) {
     // First regex to match numbers with two decimal places or numbers followed by '/-'
     final priceRegExp = RegExp(r'\b\d+\.\d{2}\b|\b\d+/-(?=\s|$)');
     final match = priceRegExp.firstMatch(text);
@@ -121,7 +278,7 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
     return '';
   }
 
-// Post-processing to clean unwanted characters
+  // Post-processing to clean unwanted characters
   String _cleanPrice(String price) {
     // Remove the currency symbols and prefixes (Rs., MRP., ₹, etc.)
     final cleanPrice = price.replaceAll(
