@@ -31,6 +31,12 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
     _initializeCamera();
     _entityExtractor =
         EntityExtractor(language: EntityExtractorLanguage.english);
+
+    _priceController.addListener(() {
+      setState(() {
+        // Trigger UI updates whenever the text changes
+      });
+    });
   }
 
   Future<void> _initializeCamera() async {
@@ -155,8 +161,9 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        backgroundColor: Colors.blue,
+        backgroundColor: Colors.green,
         title: Text(
           "PRICE EXTRACTOR",
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
@@ -164,16 +171,24 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
         centerTitle: true,
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: FloatingActionButton(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        backgroundColor: Colors.green,
-        child: Icon(
-          _isPaused ? Icons.play_arrow : Icons.pause,
-          color: Colors.white,
-          size: 30,
+      floatingActionButton: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.1,
+        child: FloatingActionButton.extended(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          backgroundColor: Colors.green,
+          label: Icon(
+            _priceController.text.isEmpty
+                ? _isPaused
+                    ? Icons.play_arrow
+                    : Icons.pause
+                : Icons.check_box,
+            color: Colors.white,
+            size: 50,
+          ),
+          onPressed: _resumeStream,
         ),
-        onPressed: _resumeStream,
       ),
       body: Padding(
         padding: const EdgeInsets.all(5),
@@ -212,30 +227,27 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
                         children: [
                           Icon(
                             Icons.currency_rupee_outlined, // Currency icon
-                            color: _priceController.text.isEmpty
-                                ? Colors.red
-                                : Colors.green[800],
+                            color: Colors.green[800],
                             size: 26,
                           ),
                           SizedBox(width: 5),
                           Expanded(
                             child: TextField(
                               controller: _priceController,
+                              keyboardType: TextInputType.numberWithOptions(),
                               style: TextStyle(
                                 fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                                color: _priceController.text.isEmpty
-                                    ? Colors.red
-                                    : Colors.green[800],
+                                fontWeight: FontWeight.w500,
+                                color: Colors.green[800],
                               ),
                               decoration: InputDecoration(
                                 isCollapsed: true,
                                 border: InputBorder.none,
-                                hintText: "Not found",
+                                hintText: "Enter price",
                                 hintStyle: TextStyle(
                                   fontSize: 26,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.red,
+                                  fontWeight: FontWeight.w400,
+                                  color: Colors.grey[400],
                                 ),
                               ),
                             ),
