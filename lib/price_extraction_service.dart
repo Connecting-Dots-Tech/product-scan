@@ -77,14 +77,12 @@ class PriceExtractionService {
         }
       }
     }
-
     if (closestNumericText != null) {
       // Combine the keyword and the closest numeric value into a money-recognizable format
       return "$keywordText $closestNumericText"
           .replaceAll(RegExp(r'\s+'), ' ')
           .trim();
     }
-
     return keywordText; // Return only the keyword if no numeric value is found
   }
 
@@ -100,7 +98,6 @@ class PriceExtractionService {
       'Rupees',
       'Price'
     ];
-
     String preprocessedText = text;
 
     // Loop through each keyword in the list and apply the replacement
@@ -111,14 +108,10 @@ class PriceExtractionService {
             caseSensitive: false),
         (match) {
           // Extract the keyword, and replace it with ₹ while preserving the punctuation
-          var matchedText = match.group(0)!;
-          var replacedText = '₹' +
-              matchedText.substring(keyword.length); // Keep punctuation intact
-          return replacedText;
+          return '₹';
         },
       );
     }
-
     return preprocessedText;
   }
 
@@ -127,11 +120,9 @@ class PriceExtractionService {
       String text, EntityExtractor entityExtractor) async {
     final List<EntityAnnotation> entityAnnotations = await entityExtractor
         .annotateText(text, entityTypesFilter: [EntityType.money]);
-
     for (var annotation in entityAnnotations) {
       return cleanPrice(annotation.text);
     }
-
     return '';
   }
 
