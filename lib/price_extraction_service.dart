@@ -5,7 +5,8 @@ import 'package:google_mlkit_entity_extraction/google_mlkit_entity_extraction.da
 
 class PriceExtractionService {
   // Function to extract horizontally or vertically aligned text based on keywords
-  String extractCombinedText(List<TextBlock> blocks, List<String> keywords) {
+  Future<String> extractCombinedText(
+      List<TextBlock> blocks, List<String> keywords) async {
     Rect? keywordBoundingBox;
     String? keywordText;
 
@@ -87,7 +88,7 @@ class PriceExtractionService {
   }
 
   // Preprocess text for entity extraction
-  String preprocessTextForEntityExtraction(String text) {
+  Future<String> preprocessTextForEntityExtraction(String text) async {
     final List<String> priceKeywords = [
       'Rs',
       'M.R.P',
@@ -127,7 +128,7 @@ class PriceExtractionService {
   }
 
   // Fallback method to extract price using Regex
-  String extractPriceUsingRegex(String text) {
+  Future<String> extractPriceUsingRegex(String text) async {
     final priceRegExp = RegExp(r'\b\d+\.\d{2}\b|\b\d+/(?=\s|$)');
     final match = priceRegExp.firstMatch(text);
 

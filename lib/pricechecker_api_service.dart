@@ -85,8 +85,8 @@ class ApiService {
   Future<List<Product>> getProductByBarcode(String barcode) async {
     try {
       print('READY TO CALL API');
-      final response =
-          await _dio.get('http://192.168.1.2:4001/products/barcode/$barcode');
+      final response = await _dio
+          .get('http://192.168.43.223:4001/products/barcode/$barcode');
       print('RESPONSECODE:${response.statusCode}');
       if (response.statusCode == 200) {
         print(response.data);

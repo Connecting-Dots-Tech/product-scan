@@ -30,7 +30,7 @@ class PriceExtractorApp extends StatefulWidget {
 class _PriceExtractorAppState extends State<PriceExtractorApp> {
   CameraController? _cameraController;
   final TextRecognizer _textRecognizer =
-      TextRecognizer(script: TextRecognitionScript.devanagiri);
+      TextRecognizer(script: TextRecognitionScript.latin);
   final BarcodeScanner _barcodeScanner = BarcodeScanner();
   late EntityExtractor _entityExtractor;
   final PriceExtractionService _priceExtractionService =
@@ -84,7 +84,7 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
     super.initState();
     _initializeCamera();
     _entityExtractor =
-        EntityExtractor(language: EntityExtractorLanguage.english);
+        EntityExtractor(language: EntityExtractorLanguage.russian);
     _priceController.addListener(() {
       setState(() {});
     });
@@ -96,7 +96,7 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
 
     _cameraController = CameraController(
       firstCamera,
-      ResolutionPreset.high,
+      ResolutionPreset.veryHigh,
       enableAudio: false,
     );
 
@@ -130,6 +130,8 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
           builder: (context) => ProductDetailsPage(product: product!),
         ),
       );
+    } else if (product == null) {
+      Navigator.pop(context);
     }
 
     setState(() {
@@ -203,14 +205,11 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
 
   Future<String?> _processImageForPriceExtraction(CameraImage image) async {
     try {
-      // Convert CameraImage to InputImage
       final inputImage = _convertCameraImageToInputImage(image);
 
-      // Recognize text from the image
       final recognizedText = await _textRecognizer.processImage(inputImage);
       print("Recognized Text: ${recognizedText.text}");
 
-      // Define price-related keywords
       final List<String> priceKeywords = [
         'Rs',
         'M.R.P',
@@ -222,33 +221,27 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
         'Price'
       ];
 
-      // Extract and combine text with keywords
-      String combinedText = _priceExtractionService.extractCombinedText(
+      String combinedText = await _priceExtractionService.extractCombinedText(
           recognizedText.blocks, priceKeywords);
       print("Combined Text before preprocessing: $combinedText");
 
-      // Skip further processing if no text was combined
       if (combinedText.isEmpty) {
         return null;
       }
 
-      // Preprocess the combined text
-      String preprocessedText = _priceExtractionService
+      String preprocessedText = await _priceExtractionService
           .preprocessTextForEntityExtraction(combinedText);
       print("Preprocessed Combined Text: $preprocessedText");
 
-      // Try NER extraction first
       String extractedPrice = await _priceExtractionService
           .extractPriceUsingNER(preprocessedText, _entityExtractor);
 
-      // Fallback to regex if NER fails
       if (extractedPrice.isEmpty) {
         print("NER extraction failed. Falling back to regex.");
         extractedPrice = await _priceExtractionService
             .extractPriceUsingRegex(preprocessedText);
       }
-
-      // Return null if no price was found, otherwise return the extracted price
+      _textRecognizer.close();
       return extractedPrice;
     } catch (e) {
       print("Error in price extraction: $e");
@@ -276,15 +269,14 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
       });
 
       await _cameraController!.startImageStream((CameraImage image) async {
-        if (scannedBarcode != null || completer.isCompleted)
-          return; // Add this check
+        if (scannedBarcode != null || completer.isCompleted) return;
 
         try {
           String? barcode = await _startBarcodeScanning(image);
           if (barcode != null) {
             scannedBarcode = barcode;
-            print('SCANNEED BARCODE: $barcode');
-            // Stop barcode scanning stream
+            print('SCANNED BARCODE: $barcode');
+
             if (_cameraController!.value.isStreamingImages) {
               await _cameraController!.stopImageStream();
             }
@@ -294,11 +286,8 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
               _statusMessage = "Processing barcode...";
             });
 
-            // Get products matching the barcode
-
-            sample = apiservice.getProductByBarcode(barcode);
-
-            List<Product> productList = await sample;
+            List<Product> productList =
+                await apiservice.getProductByBarcode(barcode);
             productList = productList
                 .where((product) => product.barcode == barcode)
                 .toList();
@@ -322,17 +311,18 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                     "Multiple products found. Point camera at price tag";
               });
 
+              // Set timeout for price scanning
               _priceInputTimer?.cancel();
-              _priceInputTimer = Timer(Duration(seconds: 5), () {
+              _priceInputTimer = Timer(Duration(seconds: 10), () {
                 if (!completer.isCompleted) {
                   if (_cameraController!.value.isStreamingImages) {
                     _cameraController!.stopImageStream();
                   }
                   setState(() {
-                    _showManualInput = true;
-                    _scanningState = ScanningState.manualPriceInput;
-                    _statusMessage = "Enter price manually";
+                    _scanningState = ScanningState.complete;
+                    _statusMessage = "Price not found. Please try again";
                   });
+                  completer.complete(null); // Return null to go back
                 }
               });
 
@@ -369,36 +359,46 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
       }
       if (_cameraController!.value.isStreamingImages) return;
 
+      bool isProcessing = false; // Flag to prevent multiple processing
+
       await _cameraController!.startImageStream((CameraImage image) async {
-        if (completer.isCompleted) return; // Add this check
+        // Return immediately if completer is completed or already processing
+        if (completer.isCompleted || isProcessing) return;
 
         try {
-          price = await _processImageForPriceExtraction(image);
-          print('SCANNED PRICE :$price');
-          if (price != null) {
-            // Stop image stream before processing the result
+          isProcessing = true; // Set processing flag
+          String? scannedPrice = await _processImageForPriceExtraction(image);
+          print('SCANNED PRICE: $scannedPrice');
+
+          if (scannedPrice != null) {
+            // Immediately stop the stream
             if (_cameraController!.value.isStreamingImages) {
               await _cameraController!.stopImageStream();
             }
 
-            // Find product with matching price
             Product? matchingProduct = products
-                    .any((product) => product.bmrp.toString() == price)
-                ? products
-                    .firstWhere((product) => product.bmrp.toString() == price)
+                    .any((product) => product.bmrp.toString() == scannedPrice)
+                ? products.firstWhere(
+                    (product) => product.bmrp.toString() == scannedPrice)
                 : null;
-            print('MATCHED PRODUCT PRICE${matchingProduct?.bmrp}');
-            if (!completer.isCompleted) {
-              _priceInputTimer?.cancel(); // Cancel the timer
-              print('MATCHED PRODUCT PRICE${matchingProduct?.bmrp}');
-              price = null;
 
+            if (matchingProduct != null && !completer.isCompleted) {
+              print('MATCHED PRODUCT PRICE: ${matchingProduct.bmrp}');
+              _priceInputTimer?.cancel();
+              setState(() {
+                _scanningState = ScanningState.complete;
+                _statusMessage = "Product found!";
+              });
               completer.complete(matchingProduct);
-              matchingProduct = null;
+            } else {
+              isProcessing = false; // Reset processing flag if no match found
             }
-            print('Stopped scanning');
+          } else {
+            isProcessing = false; // Reset processing flag if no price found
           }
         } catch (e) {
+          print("Error in price scanning: $e");
+          isProcessing = false; // Reset processing flag on error
           if (_cameraController!.value.isStreamingImages) {
             await _cameraController!.stopImageStream();
           }
@@ -606,6 +606,9 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
   void dispose() {
     _cameraController?.dispose();
     _priceController.dispose();
+    _textRecognizer.close();
+    _entityExtractor.close();
+    _priceInputTimer?.cancel();
     super.dispose();
   }
 }
