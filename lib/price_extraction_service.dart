@@ -13,7 +13,7 @@ class PriceExtractionService {
     final keywordRegex = RegExp(
       r'\b(?:' +
           keywords.map((k) => RegExp.escape(k)).join('|') +
-          r')[\.:₹7RZF/-]*\b',
+          r')[\.:₹RZF/-]*\b',
       caseSensitive: false,
     );
 

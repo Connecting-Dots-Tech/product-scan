@@ -11,88 +11,82 @@ import 'package:price_snap/pricechecker_api_service.dart';
 import 'package:price_snap/product_details_page.dart';
 import 'price_extraction_service.dart';
 
-class PriceExtractorNERApp extends StatefulWidget {
-  const PriceExtractorNERApp({super.key});
-
-  @override
-  _PriceExtractorNERAppState createState() => _PriceExtractorNERAppState();
+enum ScanningState {
+  preparingCamera,
+  scanningBarcode,
+  scanningPrice,
+  manualPriceInput,
+  processingData,
+  complete
 }
 
-class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
+class PriceExtractorApp extends StatefulWidget {
+  const PriceExtractorApp({super.key});
+
+  @override
+  _PriceExtractorAppState createState() => _PriceExtractorAppState();
+}
+
+class _PriceExtractorAppState extends State<PriceExtractorApp> {
   CameraController? _cameraController;
-  final TextRecognizer _textRecognizer = TextRecognizer();
+  final TextRecognizer _textRecognizer =
+      TextRecognizer(script: TextRecognitionScript.devanagiri);
   final BarcodeScanner _barcodeScanner = BarcodeScanner();
   late EntityExtractor _entityExtractor;
   final PriceExtractionService _priceExtractionService =
       PriceExtractionService();
-  final ApiService _apiService = ApiService();
+
   TextEditingController _priceController = TextEditingController();
+  ApiService apiservice = ApiService();
 
-  String _barcode = '';
-
-  bool _isCameraInitialized = false;
-  bool _isProcessing = false;
-  bool _isPaused = false;
+  // bool _isCameraInitialized = false;
 
   bool _isScanning = false;
 
-  bool _isAPIcomplete = true;
-  bool _isBarcodeScanner = false;
+  Product? product = null;
 
-  File? imageFile; // Placeholder for image file
   String? price; // TextField value
-  bool isCorrect = true; // Flag for correctness
-  String algorithm = ''; // Algorithm name ('NER' or 'regEX')
 
   Product? resulProduct;
+  ScanningState _scanningState = ScanningState.preparingCamera;
+  String _statusMessage = "Initializing camera...";
 
-  List<Product> sample = [
+  Timer? _priceInputTimer;
+  bool _showManualInput = false;
+
+  late Future<List<Product>> sample;
+
+  List<Product> testProductList = [
     Product(
-        code: '1',
-        name: 'Book',
-        category: 'stationary',
-        brand: 'Paperage',
-        productCode: '12345',
-        salesPrice: '56',
-        barcode: '8906150411104'),
+        code: '123',
+        name: 'Paperage book',
+        category: 'Book',
+        brand: 'paperage',
+        productCode: '123',
+        bmrp: '55',
+        barcode: '8906150411104',
+        discount: '0',
+        salesPrice: '55'),
     Product(
-        code: '2',
-        name: 'Biscuit',
-        category: 'food',
-        brand: 'Sunfiest',
-        productCode: '345',
-        salesPrice: '55',
-        barcode: '8906150411104'),
-    // Product(
-    //     code: '3',
-    //     name: 'Pen',
-    //     category: 'stationary',
-    //     brand: 'cello',
-    //     productCode: '543',
-    //     salesPrice: '10.00',
-    //     barcode: '8902102127468')
+        code: '123',
+        name: 'Paperage book',
+        category: 'Book',
+        brand: 'paperage',
+        productCode: '123',
+        bmrp: '58',
+        barcode: '8906150411104',
+        discount: '0',
+        salesPrice: '55')
   ];
-  Future<void> scanProduct() async {
-    Product? product = await productDetails(); // Call the function
-
-    if (mounted) {
-      setState(() {
-        resulProduct = product; // Store result and update UI
-      });
-    }
-  }
 
   @override
   void initState() {
     super.initState();
     _initializeCamera();
-    //WidgetsBinding.instance.addObserver(this);
     _entityExtractor =
         EntityExtractor(language: EntityExtractorLanguage.english);
     _priceController.addListener(() {
-      setState(() {
-        // Trigger UI updates whenever the text changes
-      });
+      setState(() {});
     });
   }
 
@@ -108,12 +102,15 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
 
     try {
       await _cameraController!.initialize();
-      setState(() {
-        _isCameraInitialized = true;
-      });
+      _handleRefresh();
+      //_isCameraInitialized = true;
+
       _startScanning();
     } catch (e) {
       print("Camera initialization error: $e");
+      setState(() {
+        _statusMessage = "Error initializing camera";
+      });
     }
   }
 
@@ -124,22 +121,48 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
       _isScanning = true;
     });
 
-    Product? product = await productDetails(); // Scan for a product
+    product = await productDetails(); // Scan for a product
 
     if (product != null && mounted) {
-      Navigator.push(
+      Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => ProductDetailsPage(product: product),
+          builder: (context) => ProductDetailsPage(product: product!),
         ),
-      ).then((_) {
-        _startScanning();
-      });
+      );
     }
 
     setState(() {
       _isScanning = false;
     });
+  }
+
+  // Function to convert CameraImage to InputImage
+  InputImage _convertCameraImageToInputImage(CameraImage image) {
+    final WriteBuffer allBytes = WriteBuffer();
+    for (final Plane plane in image.planes) {
+      allBytes.putUint8List(plane.bytes);
+    }
+    final bytes = allBytes.done().buffer.asUint8List();
+
+    return InputImage.fromBytes(
+      bytes: bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: _getCameraRotation(), // Utility function for rotation
+        format:
+            InputImageFormat.nv21, // Ensure the format matches camera output
+        bytesPerRow: image.planes[0].bytesPerRow,
+      ),
+    );
+  }
+
+  InputImageRotation _getCameraRotation() {
+    final deviceRotation = _cameraController!.description.sensorOrientation;
+    if (deviceRotation == 90) return InputImageRotation.rotation90deg;
+    if (deviceRotation == 180) return InputImageRotation.rotation180deg;
+    if (deviceRotation == 270) return InputImageRotation.rotation270deg;
+    return InputImageRotation.rotation0deg;
   }
 
 //BARCODE SCANNER
@@ -176,14 +199,6 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
     }
 
     return null;
-  }
-
-  InputImageRotation _getCameraRotation() {
-    final deviceRotation = _cameraController!.description.sensorOrientation;
-    if (deviceRotation == 90) return InputImageRotation.rotation90deg;
-    if (deviceRotation == 180) return InputImageRotation.rotation180deg;
-    if (deviceRotation == 270) return InputImageRotation.rotation270deg;
-    return InputImageRotation.rotation0deg;
   }
 
   Future<String?> _processImageForPriceExtraction(CameraImage image) async {
@@ -226,18 +241,11 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
       String extractedPrice = await _priceExtractionService
           .extractPriceUsingNER(preprocessedText, _entityExtractor);
 
-      setState(() {
-        algorithm = 'NER';
-      });
-
       // Fallback to regex if NER fails
       if (extractedPrice.isEmpty) {
         print("NER extraction failed. Falling back to regex.");
-        extractedPrice =
-            _priceExtractionService.extractPriceUsingRegex(preprocessedText);
-        setState(() {
-          algorithm = 'RegEX';
-        });
+        extractedPrice = await _priceExtractionService
+            .extractPriceUsingRegex(preprocessedText);
       }
 
       // Return null if no price was found, otherwise return the extracted price
@@ -248,144 +256,8 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
     }
   }
 
-  // First, add this function to your class to convert CameraImage to File
-  // Future<File> convertCameraImageToFile(CameraImage image) async {
-  //   try {
-  //     // Only stop the stream if it's currently running
-  //     if (_cameraController.value.isStreamingImages) {
-  //       await _cameraController.stopImageStream();
-  //     }
-  //     XFile capturedImage =
-  //         await _cameraController.takePicture(); // Take the picture
-  //     File imageFile = File(capturedImage.path); // Convert XFile to File
-  //     return imageFile;
-  //   } catch (e) {
-  //     print('Error converting camera image to file: $e');
-  //     rethrow;
-  //   } finally {
-  //     // Resume the stream if needed and not paused
-  //     if (!_isPaused && !_cameraController.value.isStreamingImages) {
-  //       _startImageStream();
-  //     }
-  //   }
-  // }
-
-  // Function to convert CameraImage to InputImage
-  InputImage _convertCameraImageToInputImage(CameraImage image) {
-    final WriteBuffer allBytes = WriteBuffer();
-    for (final Plane plane in image.planes) {
-      allBytes.putUint8List(plane.bytes);
-    }
-    final bytes = allBytes.done().buffer.asUint8List();
-
-    return InputImage.fromBytes(
-      bytes: bytes,
-      metadata: InputImageMetadata(
-        size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: _getCameraRotation(), // Utility function for rotation
-        format:
-            InputImageFormat.nv21, // Ensure the format matches camera output
-        bytesPerRow: image.planes[0].bytesPerRow,
-      ),
-    );
-  }
-
-  // Utility function to get the rotation angle of the image
-  // InputImageRotation _getImageRotation() {
-  //   // Adjust according to the orientation of your device and camera
-  //   // Common values are 0, 90, 180, 270 for rotation angles
-  //   return InputImageRotation.rotation0deg;
-  // }
-
-  Future<void> _apiResumeStream() async {
-    if (_priceController.text.isNotEmpty) {
-      try {
-        // Wait for API response
-        setState(() {
-          _isAPIcomplete = false;
-        });
-
-        await _apiService.sendPriceExtractionData(
-          imageFile: imageFile!,
-          price: _priceController.text,
-          isCorrect: isCorrect,
-          algorithm: algorithm,
-        );
-
-        // Only reset the state after successful API response
-        setState(() {
-          _isPaused = !_isPaused;
-          _priceController.text = '';
-        });
-      } catch (e) {
-        // Handle API error
-        print("Error sending data to API: $e");
-        // Optionally show error to user using ScaffoldMessenger
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to send data. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } else {
-      // If no price text, just toggle the stream
-      setState(() {
-        _isPaused = !_isPaused;
-        _priceController.text = '';
-      });
-    }
-    setState(() {
-      _isAPIcomplete = true;
-    });
-  }
-
   bool _isLandscape(BuildContext context) {
     return MediaQuery.orientationOf(context) == Orientation.landscape;
-  }
-
-  Future<void> startPriceScanning(
-      Completer<Product?> completer, List<Product> products) async {
-    try {
-      if (_cameraController == null ||
-          !_cameraController!.value.isInitialized) {
-        throw Exception("Camera is not initialized");
-      }
-      if (_cameraController!.value.isStreamingImages) return;
-
-      await _cameraController!.startImageStream((CameraImage image) async {
-        try {
-          String? price = await _processImageForPriceExtraction(image);
-          print(price);
-          if (price != null) {
-            if (_cameraController!.value.isStreamingImages) {
-              await _cameraController!.stopImageStream();
-            }
-
-            // Find product with matching price
-            Product? matchingProduct = products
-                    .any((product) => product.salesPrice.toString() == price)
-                ? products.firstWhere(
-                    (product) => product.salesPrice.toString() == price)
-                : null;
-
-            if (!completer.isCompleted) {
-              completer.complete(matchingProduct);
-            }
-          }
-        } catch (e) {
-          if (_cameraController!.value.isStreamingImages) {
-            await _cameraController!.stopImageStream();
-          }
-          if (!completer.isCompleted) {
-            completer.completeError(e);
-          }
-        }
-      });
-    } catch (e) {
-      print("Error in price scanning: $e");
-      completer.completeError(e);
-    }
   }
 
   Future<Product?> productDetails() async {
@@ -394,48 +266,81 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
           !_cameraController!.value.isInitialized) {
         throw Exception("Camera is not initialized");
       }
-      if (_cameraController!.value.isStreamingImages) return null;
 
       final completer = Completer<Product?>();
       String? scannedBarcode;
+      print('BARCODE SCANNING STARTED');
+      setState(() {
+        _scanningState = ScanningState.scanningBarcode;
+        _statusMessage = "Point camera at product barcode";
+      });
 
-      // Phase 1: Barcode Scanning
       await _cameraController!.startImageStream((CameraImage image) async {
-        if (scannedBarcode != null) {
-          if (_cameraController!.value.isStreamingImages) {
-            await _cameraController!.stopImageStream();
-          }
-          return;
-        }
+        if (scannedBarcode != null || completer.isCompleted)
+          return; // Add this check
 
         try {
           String? barcode = await _startBarcodeScanning(image);
-          print(barcode);
           if (barcode != null) {
             scannedBarcode = barcode;
-
+            print('SCANNEED BARCODE: $barcode');
+            // Stop barcode scanning stream
             if (_cameraController!.value.isStreamingImages) {
               await _cameraController!.stopImageStream();
             }
-            print('after stopping');
 
-            // Get products for scanned barcode
-            //print("PASSING TO API");
-            List<Product> productList = sample;
-            //List<Product> productList =await _apiService.getProductByBarcode(barcode);
-            // print('RETURNING FROM API');
-            if (productList.length == 1) {
-              // Single product - return it immediately
-              completer.complete(productList.first);
-            } else if (productList.length > 1) {
-              // Multiple products - start price scanning
-              await startPriceScanning(completer, productList);
-            } else {
-              // No products found
+            setState(() {
+              _scanningState = ScanningState.processingData;
+              _statusMessage = "Processing barcode...";
+            });
+
+            // Get products matching the barcode
+
+            sample = apiservice.getProductByBarcode(barcode);
+
+            List<Product> productList = await sample;
+            productList = productList
+                .where((product) => product.barcode == barcode)
+                .toList();
+
+            if (productList.isEmpty) {
+              setState(() {
+                _scanningState = ScanningState.complete;
+                _statusMessage = "No products found with this barcode";
+              });
               completer.complete(null);
+            } else if (productList.length == 1) {
+              setState(() {
+                _scanningState = ScanningState.complete;
+                _statusMessage = "Product found!";
+              });
+              completer.complete(productList.first);
+            } else {
+              setState(() {
+                _scanningState = ScanningState.scanningPrice;
+                _statusMessage =
+                    "Multiple products found. Point camera at price tag";
+              });
+
+              _priceInputTimer?.cancel();
+              _priceInputTimer = Timer(Duration(seconds: 5), () {
+                if (!completer.isCompleted) {
+                  if (_cameraController!.value.isStreamingImages) {
+                    _cameraController!.stopImageStream();
+                  }
+                  setState(() {
+                    _showManualInput = true;
+                    _scanningState = ScanningState.manualPriceInput;
+                    _statusMessage = "Enter price manually";
+                  });
+                }
+              });
+
+              await startPriceScanning(completer, productList);
             }
           }
         } catch (e) {
+          print("Error in scanning: $e");
           if (_cameraController!.value.isStreamingImages) {
             await _cameraController!.stopImageStream();
           }
@@ -448,371 +353,259 @@ class _PriceExtractorNERAppState extends State<PriceExtractorNERApp> {
       return completer.future;
     } catch (e) {
       print("Error in productDetails: $e");
+      setState(() {
+        _statusMessage = "Error: $e";
+      });
       return null;
     }
+  }
+
+  Future<void> startPriceScanning(
+      Completer<Product?> completer, List<Product> products) async {
+    try {
+      if (_cameraController == null ||
+          !_cameraController!.value.isInitialized) {
+        throw Exception("Camera is not initialized");
+      }
+      if (_cameraController!.value.isStreamingImages) return;
+
+      await _cameraController!.startImageStream((CameraImage image) async {
+        if (completer.isCompleted) return; // Add this check
+
+        try {
+          price = await _processImageForPriceExtraction(image);
+          print('SCANNED PRICE :$price');
+          if (price != null) {
+            // Stop image stream before processing the result
+            if (_cameraController!.value.isStreamingImages) {
+              await _cameraController!.stopImageStream();
+            }
+
+            // Find product with matching price
+            Product? matchingProduct = products
+                    .any((product) => product.bmrp.toString() == price)
+                ? products
+                    .firstWhere((product) => product.bmrp.toString() == price)
+                : null;
+            print('MATCHED PRODUCT PRICE${matchingProduct?.bmrp}');
+            if (!completer.isCompleted) {
+              _priceInputTimer?.cancel(); // Cancel the timer
+              print('MATCHED PRODUCT PRICE${matchingProduct?.bmrp}');
+              price = null;
+
+              completer.complete(matchingProduct);
+              matchingProduct = null;
+            }
+            print('Stopped scanning');
+          }
+        } catch (e) {
+          if (_cameraController!.value.isStreamingImages) {
+            await _cameraController!.stopImageStream();
+          }
+          if (!completer.isCompleted) {
+            completer.completeError(e);
+          }
+        }
+      });
+    } catch (e) {
+      print("Error in price scanning: $e");
+      if (!completer.isCompleted) {
+        completer.completeError(e);
+      }
+    }
+  }
+
+  void _handleRefresh() async {
+    price = null;
+    setState(() {
+      _isScanning = false;
+      _scanningState = ScanningState.scanningBarcode;
+      _statusMessage = "Point camera at product barcode";
+    });
+    _startScanning();
   }
 
   @override
   Widget build(BuildContext context) {
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      return Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 20),
+              Text(_statusMessage),
+            ],
+          ),
+        ),
+      );
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text("Scan Product")),
+      resizeToAvoidBottomInset: false,
+      appBar: AppBar(
+        title: Text("Scan Product"),
+        centerTitle: true,
+        // actions: [
+        //   IconButton(
+        //     icon: Icon(Icons.refresh),
+        //     onPressed: !_isScanning ? _handleRefresh : null,
+        //   ),
+        // ],
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(4.0),
+          child: LinearProgressIndicator(
+            value: _getProgressValue(),
+            backgroundColor: Colors.grey[300],
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+          ),
+        ),
+      ),
       body: Stack(
         children: [
-          CameraPreview(_cameraController!), // Show the camera view
+          CameraPreview(_cameraController!),
+
+          // Scanning overlay
           Center(
-            child: _isScanning
-                ? CircularProgressIndicator()
-                : Text("Point camera at product",
-                    style: TextStyle(color: Colors.white)),
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.green, width: 2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+
+          // Manual price input overlay
+          if (_showManualInput)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black54,
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextField(
+                      controller: _priceController,
+                      keyboardType:
+                          TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        hintText: "Enter price",
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: () async {
+                        String enteredPrice = _priceController.text;
+                        List<Product> productList = await sample;
+                        Product? matchingProduct = productList
+                            .where((p) => p.bmrp == enteredPrice)
+                            .firstOrNull;
+
+                        if (matchingProduct != null) {
+                          // Reset states before navigation
+                          setState(() {
+                            _showManualInput = false;
+                            _isScanning = false;
+                            _priceController.clear();
+                          });
+
+                          // Navigate and then reset completely
+
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  ProductDetailsPage(product: matchingProduct),
+                            ),
+                          );
+                        } else {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content:
+                                  Text("No product found with this price")));
+                        }
+                      },
+                      child: Text("Submit"),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // Status message
+          Positioned(
+            bottom: 50,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+              color: Colors.black54,
+              child: Column(
+                children: [
+                  Text(
+                    _statusMessage,
+                    style: TextStyle(color: Colors.white, fontSize: 18),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    _getScanningStepText(),
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
+  double _getProgressValue() {
+    switch (_scanningState) {
+      case ScanningState.preparingCamera:
+        return 0.16;
+      case ScanningState.scanningBarcode:
+        return 0.33;
+      case ScanningState.scanningPrice:
+        return 0.5;
+      case ScanningState.manualPriceInput:
+        return 0.66;
+      case ScanningState.processingData:
+        return 0.83;
+      case ScanningState.complete:
+        return 1.0;
+    }
+  }
+
+  String _getScanningStepText() {
+    switch (_scanningState) {
+      case ScanningState.preparingCamera:
+        return "Step 1/5: Preparing camera";
+      case ScanningState.scanningBarcode:
+        return "Step 2/5: Scanning barcode";
+      case ScanningState.scanningPrice:
+        return "Step 3/5: Scanning price";
+      case ScanningState.manualPriceInput:
+        return "Step 4/5: Manual price input";
+      case ScanningState.processingData:
+        return "Step 5/5: Processing data";
+      case ScanningState.complete:
+        return "Complete!";
+    }
+  }
+
   @override
   void dispose() {
     _cameraController?.dispose();
+    _priceController.dispose();
     super.dispose();
   }
 }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     double screenWidth = MediaQuery.sizeOf(context).width;
-//     double screenHeigth = MediaQuery.sizeOf(context).height;
-
-//     return Scaffold(
-//         resizeToAvoidBottomInset: false,
-//         appBar: AppBar(
-//           backgroundColor: Colors.green,
-//           title: Text(
-//             "PRICE EXTRACTOR",
-//             style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-//           ),
-//           centerTitle: true,
-//         ),
-//         body: Stack(
-//           children: [
-//             buildnew(),
-//             // OrientationBuilder(
-//             //   builder: (context, orientation) {
-//             //     return orientation == Orientation.portrait
-//             //         ? buildPortraitLayout(screenHeigth, screenWidth)
-//             //         : buildLandscapeLayout(screenHeigth, screenWidth);
-//             //   },
-//             // ),
-//             // if (!_isAPIcomplete)
-//             //   Positioned.fill(
-//             //     child: Container(
-//             //       color: const Color.fromARGB(152, 0, 0, 0),
-//             //       child: Column(
-//             //         mainAxisAlignment: MainAxisAlignment.center,
-//             //         children: [
-//             //           CircularProgressIndicator(
-//             //             color: Colors.grey,
-//             //           ),
-//             //           SizedBox(
-//             //             height: MediaQuery.sizeOf(context).height * 0.03,
-//             //           ),
-//             //           Text(
-//             //             'Storing Data...',
-//             //             style: TextStyle(
-//             //                 color: Colors.grey[200],
-//             //                 fontStyle: FontStyle.italic),
-//             //           )
-//             //         ],
-//             //       ),
-//             //     ),
-//             //   ),
-//           ],
-//         ));
-//   }
-
-//   Widget buildnew() {
-//     return Expanded(
-//       child: Center(
-//         child: AspectRatio(
-//           key: UniqueKey(),
-//           aspectRatio: 9 / 16,
-//           child: ClipRRect(
-//             borderRadius:
-//                 BorderRadius.circular(20), // Adjust the radius as needed
-//             child: CameraPreview(_cameraController),
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-
-//   Widget buildPortraitLayout(double screenheight, double screenWidth) {
-//     return Padding(
-//       padding: const EdgeInsets.all(5),
-//       child: Column(
-//         children: [
-//           SizedBox(
-//             height: screenheight * 0.01,
-//           ),
-//           Row(
-//             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-//             children: [
-//               _priceField(),
-//               ToggleButtons(
-//                 direction: Axis.horizontal,
-//                 borderRadius: BorderRadius.circular(15),
-//                 selectedColor: Colors.green[800],
-//                 selectedBorderColor: Colors.green[800],
-//                 children: const [
-//                   Icon(Icons.barcode_reader),
-//                   Icon(Icons.attach_money),
-//                 ],
-//                 onPressed: (int index) {
-//                   setState(() {
-//                     _isBarcodeScanner = !_isBarcodeScanner;
-//                   });
-//                 },
-//                 isSelected: [_isBarcodeScanner, !_isBarcodeScanner],
-//               ),
-//             ],
-//           ),
-//           SizedBox(
-//             height: MediaQuery.sizeOf(context).height * 0.01,
-//           ),
-//           Text("Scan the price tag here"),
-//           if (_isCameraInitialized)
-//             Expanded(
-//               child: Center(
-//                 child: AspectRatio(
-//                   key: UniqueKey(),
-//                   aspectRatio: 9 / 16,
-//                   child: ClipRRect(
-//                     borderRadius: BorderRadius.circular(
-//                         20), // Adjust the radius as needed
-//                     child: CameraPreview(_cameraController),
-//                   ),
-//                 ),
-//               ),
-//             ),
-//           SizedBox(
-//             height: 20,
-//           ),
-//           Row(
-//             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-//             children: [
-//               Expanded(
-//                 child: MaterialButton(
-//                   height: MediaQuery.sizeOf(context).height * 0.07,
-//                   shape: RoundedRectangleBorder(
-//                       borderRadius: BorderRadius.circular(10)),
-//                   color: Colors.green,
-//                   onPressed: _isAPIcomplete
-//                       ? () {
-//                           setState(() {
-//                             _isPaused = !_isPaused;
-//                             _priceController.text = '';
-//                           });
-//                         }
-//                       : null,
-//                   disabledColor: Colors.grey,
-//                   child: Icon(_isPaused ? Icons.play_arrow : Icons.pause),
-//                 ),
-//               ),
-//               SizedBox(
-//                 width: MediaQuery.sizeOf(context).width * 0.05,
-//               ),
-//               Expanded(
-//                 child: MaterialButton(
-//                   height: MediaQuery.sizeOf(context).height * 0.07,
-//                   shape: RoundedRectangleBorder(
-//                       borderRadius: BorderRadius.circular(10)),
-//                   color: Colors.green,
-//                   onPressed: _priceController.text.isNotEmpty
-//                       ? () async {
-//                           await _apiResumeStream();
-//                         }
-//                       : null,
-//                   disabledColor: Colors.grey,
-//                   child: Icon(Icons.check),
-//                 ),
-//               )
-//             ],
-//           )
-//         ],
-//       ),
-//     );
-//   }
-
-//   IntrinsicWidth _priceField() {
-//     return IntrinsicWidth(
-//       child: Container(
-//         padding: EdgeInsets.all(10),
-//         height: MediaQuery.sizeOf(context).height * 0.07,
-//         //width: MediaQuery.sizeOf(context).width * 0.4,
-//         decoration: BoxDecoration(
-//           color: Colors.grey[300], // Light green background
-//           borderRadius: BorderRadius.circular(12), // Rounded corners
-//           border: Border.all(
-//             color: Colors.black, // Dark green border
-//             width: 2,
-//           ),
-//           boxShadow: [
-//             BoxShadow(
-//               color: Colors.grey.withOpacity(0.3),
-//               spreadRadius: 2,
-//               blurRadius: 5,
-//               offset: Offset(2, 3), // Adds a slight shadow
-//             ),
-//           ],
-//         ),
-//         child: SizedBox(
-//           width: MediaQuery.sizeOf(context).width * 0.5,
-//           child: !_isPaused
-//               ? Center(
-//                   child: CircularProgressIndicator(
-//                     color: Colors.blueGrey,
-//                   ),
-//                 )
-//               : !_isBarcodeScanner
-//                   ? Row(
-//                       crossAxisAlignment: CrossAxisAlignment.center,
-//                       children: [
-//                         Icon(
-//                           Icons.currency_rupee_outlined, // Currency icon
-//                           color: Colors.green[800],
-//                           size: 26,
-//                         ),
-//                         SizedBox(width: 5),
-//                         Expanded(
-//                           child: TextField(
-//                             controller: _priceController,
-//                             keyboardType: TextInputType.numberWithOptions(),
-//                             style: TextStyle(
-//                               fontSize: 26,
-//                               fontWeight: FontWeight.w500,
-//                               color: Colors.green[800],
-//                             ),
-//                             decoration: InputDecoration(
-//                               isCollapsed: true,
-//                               border: InputBorder.none,
-//                               hintText: "Enter price",
-//                               hintStyle: TextStyle(
-//                                 fontSize: 26,
-//                                 fontWeight: FontWeight.w400,
-//                                 color: Colors.grey[400],
-//                               ),
-//                             ),
-//                           ),
-//                         ),
-//                       ],
-//                     )
-//                   : Text(_barcode),
-//         ),
-//       ),
-//     );
-//   }
-
-//   Widget buildLandscapeLayout(double screenheight, double screenWidth) {
-//     return Padding(
-//       padding: const EdgeInsets.all(5),
-//       child: Row(
-//         crossAxisAlignment: CrossAxisAlignment.start,
-//         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-//         children: [
-//           SizedBox(
-//             height: MediaQuery.sizeOf(context).height * 0.01,
-//           ),
-//           Column(
-//             children: [
-//               const Text("Scan the price tag here"),
-//               if (_isCameraInitialized)
-//                 Center(
-//                   child: Container(
-//                     height: screenheight * 0.7,
-//                     width: screenWidth * 0.5,
-//                     child: AspectRatio(
-//                       aspectRatio: 16 / 9,
-//                       child: ClipRRect(
-//                         borderRadius: BorderRadius.circular(
-//                             20), // Adjust the radius as needed
-//                         child: CameraPreview(_cameraController),
-//                       ),
-//                     ),
-//                   ),
-//                 ),
-//             ],
-//           ),
-//           Column(
-//             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-//             children: [
-//               _priceField(),
-//               Row(
-//                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-//                 children: [
-//                   SizedBox(
-//                     width: MediaQuery.sizeOf(context).width * 0.1,
-//                     child: MaterialButton(
-//                       disabledColor: Colors.grey,
-//                       height: MediaQuery.sizeOf(context).height * 0.2,
-//                       shape: RoundedRectangleBorder(
-//                           borderRadius: BorderRadius.circular(10)),
-//                       color: Colors.green,
-//                       onPressed: _isAPIcomplete
-//                           ? () {
-//                               setState(() {
-//                                 _isPaused = !_isPaused;
-//                                 _priceController.text = '';
-//                               });
-//                             }
-//                           : null,
-//                       child: Icon(_isPaused ? Icons.play_arrow : Icons.pause),
-//                     ),
-//                   ),
-//                   SizedBox(
-//                     width: MediaQuery.sizeOf(context).width * 0.05,
-//                   ),
-//                   SizedBox(
-//                     width: MediaQuery.sizeOf(context).width * 0.1,
-//                     child: MaterialButton(
-//                       height: MediaQuery.sizeOf(context).height * 0.2,
-//                       shape: RoundedRectangleBorder(
-//                           borderRadius: BorderRadius.circular(10)),
-//                       color: Colors.green,
-//                       onPressed: _priceController.text.isNotEmpty
-//                           ? () async {
-//                               await _apiResumeStream();
-//                             }
-//                           : null,
-//                       disabledColor: Colors.grey,
-//                       child: Icon(Icons.check),
-//                     ),
-//                   )
-//                 ],
-//               )
-//             ],
-//           ),
-//           SizedBox(
-//             height: MediaQuery.sizeOf(context).height * 0.01,
-//           )
-//         ],
-//       ),
-//     );
-//   }
-
-//   @override
-//   void dispose() {
-//     // Stop the image stream before disposing
-//     if (_cameraController.value.isStreamingImages) {
-//       _cameraController.stopImageStream();
-//     }
-//     _cameraController.dispose();
-//     _textRecognizer.close();
-//     _entityExtractor.close();
-//     _priceController.dispose();
-//     _barcodeScanner.close();
-//     super.dispose();
-//   }
-// }

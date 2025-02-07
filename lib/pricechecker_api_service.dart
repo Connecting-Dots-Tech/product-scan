@@ -21,8 +21,11 @@ class Product {
   final String category;
   final String brand;
   final String productCode;
-  final String salesPrice;
+  final String bmrp;
   final String barcode;
+  final String discount;
+
+  final String salesPrice;
 
   const Product({
     required this.code,
@@ -30,8 +33,10 @@ class Product {
     required this.category,
     required this.brand,
     required this.productCode,
-    required this.salesPrice,
+    required this.bmrp,
     required this.barcode,
+    required this.discount,
+    required this.salesPrice,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -41,8 +46,10 @@ class Product {
       category: json['category']?.toString() ?? '',
       brand: json['brand']?.toString() ?? '',
       productCode: json['productCode']?.toString() ?? '',
-      salesPrice: json['saleprice']?.toString() ?? '',
       barcode: json['barcode']?.toString() ?? '',
+      bmrp: json['bmrp']?.toString() ?? '',
+      discount: json['discount']?.toString() ?? '',
+      salesPrice: json['saleprice']?.toString() ?? '',
     );
   }
 
@@ -52,14 +59,16 @@ class Product {
         'category': category,
         'brand': brand,
         'productCode': productCode,
-        'saleprice': salesPrice,
         'barcode': barcode,
+        'bmrp': bmrp,
+        'discount': discount,
+        'saleprice': salesPrice,
       };
 }
 
 // API Service
 class ApiService {
-  static const String _baseUrl = 'http://192.168.1.11:4001';
+  //static const String _baseUrl = 'http://192.168.1.11:4001';
   static const String _priceCheckerUrl =
       'https://apis.datcarts.com/price-checker';
 
@@ -76,8 +85,8 @@ class ApiService {
   Future<List<Product>> getProductByBarcode(String barcode) async {
     try {
       print('READY TO CALL API');
-      final response = await _dio
-          .get('http://192.168.1.11:4001/products/barcode/8902102127468');
+      final response =
+          await _dio.get('http://192.168.1.2:4001/products/barcode/$barcode');
       print('RESPONSECODE:${response.statusCode}');
       if (response.statusCode == 200) {
         print(response.data);
