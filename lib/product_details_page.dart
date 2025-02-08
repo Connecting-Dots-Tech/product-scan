@@ -1,7 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:price_snap/pricechecker_api_service.dart';
+import 'package:price_snap/api_service.dart';
 
 class ProductDetailsPage extends StatefulWidget {
   final Product product;

@@ -8,7 +8,7 @@ import 'dart:async';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:google_mlkit_entity_extraction/google_mlkit_entity_extraction.dart';
 
-import 'package:price_snap/pricechecker_api_service.dart';
+import 'package:price_snap/api_service.dart';
 import 'package:price_snap/product_details_page.dart';
 import 'price_extraction_service.dart';
 

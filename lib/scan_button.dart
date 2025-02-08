@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:price_snap/price_extractor.dart';
+import 'package:price_snap/product_scanner.dart';
 
 class ScanButton extends StatelessWidget {
   @override
