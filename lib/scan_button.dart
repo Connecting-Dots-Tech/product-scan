@@ -13,7 +13,9 @@ class ScanButton extends StatelessWidget {
             final product = await Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => const PriceExtractorApp(),
+                builder: (context) => PriceExtractorApp(
+                  url: 'http://192.168.43.223:4001/products/barcode/',
+                ),
               ),
             );
 

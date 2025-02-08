@@ -82,20 +82,21 @@ class ApiService {
     };
   }
 
-  Future<List<Product>> getProductByBarcode(String barcode) async {
+  Future<List<Product>> getProductByBarcode(String barcode, String url) async {
     try {
       print('READY TO CALL API');
-      final response = await _dio
-          .get('http://192.168.43.223:4001/products/barcode/$barcode');
+      final response = await _dio.get('$url$barcode');
       print('RESPONSECODE:${response.statusCode}');
       if (response.statusCode == 200) {
         print(response.data);
         final List<dynamic> data = response.data;
         print(data);
         return data.map((json) => Product.fromJson(json)).toList();
+      } else {
+        print('RESPONSECODE:${response.statusCode}');
+        throw ApiException('Failed to fetch products', response.statusCode);
+        //return [];
       }
-
-      throw ApiException('Failed to fetch products', response.statusCode);
     } on DioException catch (e) {
       throw ApiException('Network error: ${e.message}', e.response?.statusCode);
     } catch (e) {
