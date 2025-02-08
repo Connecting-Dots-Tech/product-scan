@@ -40,18 +40,15 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
   final PriceExtractionService _priceExtractionService =
       PriceExtractionService();
 
-  TextEditingController _inputController = TextEditingController();
+  final TextEditingController _inputController = TextEditingController();
   ApiService apiservice = ApiService();
 
   // bool _isCameraInitialized = false;
 
   bool _isScanning = false;
 
-  Product? product = null;
+  Product? product;
 
-  String? price; // TextField value
-
-  Product? resulProduct;
   ScanningState _scanningState = ScanningState.preparingCamera;
   String _statusMessage = "Initializing camera...";
 
@@ -70,28 +67,28 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
 
   late Future<List<Product>> sample;
 
-  List<Product> testProductList = [
-    Product(
-        code: '123',
-        name: 'Paperage book',
-        category: 'Book',
-        brand: 'paperage',
-        productCode: '123',
-        bmrp: '55',
-        barcode: '8906150411104',
-        discount: '0',
-        salesPrice: '55'),
-    Product(
-        code: '123',
-        name: 'Paperage book',
-        category: 'Book',
-        brand: 'paperage',
-        productCode: '123',
-        bmrp: '58',
-        barcode: '8906150411104',
-        discount: '0',
-        salesPrice: '55')
-  ];
+  // List<Product> testProductList = [
+  //   Product(
+  //       code: '123',
+  //       name: 'Paperage book',
+  //       category: 'Book',
+  //       brand: 'paperage',
+  //       productCode: '123',
+  //       bmrp: '55',
+  //       barcode: '8906150411104',
+  //       discount: '0',
+  //       salesPrice: '55'),
+  //   Product(
+  //       code: '123',
+  //       name: 'Paperage book',
+  //       category: 'Book',
+  //       brand: 'paperage',
+  //       productCode: '123',
+  //       bmrp: '58',
+  //       barcode: '8906150411104',
+  //       discount: '0',
+  //       salesPrice: '55')
+  // ];
 
   @override
   void initState() {
@@ -404,11 +401,6 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                     if (!completer.isCompleted) {
                       completer.complete(matProduct);
                     }
-
-                    // Complete the completer with the result
-                    // if (!completer.isCompleted) {
-                    //   completer.complete(matchedProduct);
-                    // }
                   } catch (e) {
                     print("Error in price fallback: $e");
                     if (!completer.isCompleted) completer.complete(null);
@@ -508,7 +500,6 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
   }
 
   void _handleRefresh() async {
-    price = null;
     setState(() {
       _isScanning = false;
       _scanningState = ScanningState.scanningBarcode;
@@ -539,12 +530,6 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
       appBar: AppBar(
         title: Text("Scan Product"),
         centerTitle: true,
-        // actions: [
-        //   IconButton(
-        //     icon: Icon(Icons.refresh),
-        //     onPressed: !_isScanning ? _handleRefresh : null,
-        //   ),
-        // ],
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(4.0),
           child: LinearProgressIndicator(
@@ -556,7 +541,11 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
       ),
       body: Stack(
         children: [
-          Center(child: CameraPreview(_cameraController!)),
+          Center(
+              child: CameraPreview(
+            _cameraController!,
+            child: Text('data'),
+          )),
 
           // Scanning overlay
           Center(
