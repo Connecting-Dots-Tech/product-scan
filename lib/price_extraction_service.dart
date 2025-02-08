@@ -4,6 +4,56 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:google_mlkit_entity_extraction/google_mlkit_entity_extraction.dart';
 
 class PriceExtractionService {
+  final TextRecognizer _textRecognizer;
+  final EntityExtractor _entityExtractor;
+  final List<String> priceKeywords = [
+    'Rs',
+    'M.R.P',
+    'Maximum Retail Price',
+    '₹',
+    'rp',
+    'MRP',
+    'Rupees',
+    'Price'
+  ];
+
+  PriceExtractionService(this._textRecognizer, this._entityExtractor);
+
+  Future<String?> extractPriceFromImage(InputImage inputImage) async {
+    try {
+      // Step 1: Recognize text from image
+      final recognizedText = await _textRecognizer.processImage(inputImage);
+      if (recognizedText.text.isEmpty) {
+        return null;
+      }
+
+      // Step 2: Extract combined text using keyword matching
+      String combinedText =
+          await extractCombinedText(recognizedText.blocks, priceKeywords);
+      if (combinedText.isEmpty) {
+        return null;
+      }
+
+      // Step 3: Preprocess the text
+      String preprocessedText =
+          await preprocessTextForEntityExtraction(combinedText);
+
+      // Step 4: Try NER extraction first, then fallback to regex
+      String extractedPrice =
+          await extractPriceUsingNER(preprocessedText, _entityExtractor);
+      if (extractedPrice.isEmpty) {
+        extractedPrice = await extractPriceUsingRegex(preprocessedText);
+      }
+
+      return extractedPrice.isEmpty ? null : extractedPrice;
+    } catch (e) {
+      print("Error in price extraction: $e");
+      return null;
+    } finally {
+      _textRecognizer.close();
+    }
+  }
+
   // Function to extract horizontally or vertically aligned text based on keywords
   Future<String> extractCombinedText(
       List<TextBlock> blocks, List<String> keywords) async {

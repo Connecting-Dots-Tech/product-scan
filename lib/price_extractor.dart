@@ -37,8 +37,7 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
   final BarcodeScanner _barcodeScanner =
       BarcodeScanner(formats: [BarcodeFormat.all]);
   late EntityExtractor _entityExtractor;
-  final PriceExtractionService _priceExtractionService =
-      PriceExtractionService();
+  late PriceExtractionService _priceExtractionService;
 
   final TextEditingController _inputController = TextEditingController();
   ApiService apiservice = ApiService();
@@ -214,44 +213,44 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
     return null;
   }
 
-  Future<String?> _processImageForPriceExtraction(CameraImage image) async {
-    try {
-      final inputImage = _convertCameraImageToInputImage(image);
+  // Future<String?> _processImageForPriceExtraction(CameraImage image) async {
+  //   try {
+  //     final inputImage = _convertCameraImageToInputImage(image);
 
-      final recognizedText = await _textRecognizer.processImage(inputImage);
-      print("Recognized Text: ${recognizedText.text}");
+  //     final recognizedText = await _textRecognizer.processImage(inputImage);
+  //     print("Recognized Text: ${recognizedText.text}");
 
-      if (recognizedText.text.isNotEmpty) {
-        String combinedText = await _priceExtractionService.extractCombinedText(
-            recognizedText.blocks, priceKeywords);
-        print("Combined Text before preprocessing: $combinedText");
+  //     if (recognizedText.text.isNotEmpty) {
+  //       String combinedText = await _priceExtractionService.extractCombinedText(
+  //           recognizedText.blocks, priceKeywords);
+  //       print("Combined Text before preprocessing: $combinedText");
 
-        if (combinedText.isEmpty) {
-          return null;
-        }
+  //       if (combinedText.isEmpty) {
+  //         return null;
+  //       }
 
-        String preprocessedText = await _priceExtractionService
-            .preprocessTextForEntityExtraction(combinedText);
-        print("Preprocessed Combined Text: $preprocessedText");
+  //       String preprocessedText = await _priceExtractionService
+  //           .preprocessTextForEntityExtraction(combinedText);
+  //       print("Preprocessed Combined Text: $preprocessedText");
 
-        String extractedPrice = await _priceExtractionService
-            .extractPriceUsingNER(preprocessedText, _entityExtractor);
+  //       String extractedPrice = await _priceExtractionService
+  //           .extractPriceUsingNER(preprocessedText, _entityExtractor);
 
-        if (extractedPrice.isEmpty) {
-          print("NER extraction failed. Falling back to regex.");
-          extractedPrice = await _priceExtractionService
-              .extractPriceUsingRegex(preprocessedText);
-        }
-        _textRecognizer.close();
-        return extractedPrice;
-      } else {
-        return null;
-      }
-    } catch (e) {
-      print("Error in price extraction: $e");
-      return null;
-    }
-  }
+  //       if (extractedPrice.isEmpty) {
+  //         print("NER extraction failed. Falling back to regex.");
+  //         extractedPrice = await _priceExtractionService
+  //             .extractPriceUsingRegex(preprocessedText);
+  //       }
+  //       _textRecognizer.close();
+  //       return extractedPrice;
+  //     } else {
+  //       return null;
+  //     }
+  //   } catch (e) {
+  //     print("Error in price extraction: $e");
+  //     return null;
+  //   }
+  // }
 
   bool _isLandscape(BuildContext context) {
     return MediaQuery.orientationOf(context) == Orientation.landscape;
@@ -266,124 +265,130 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
 
       final completer = Completer<Product?>();
       String? scannedBarcode;
-      print('BARCODE SCANNING STARTED');
+      bool isPriceScanning = false;
+      List<Product>? productList;
+      bool isProcessing = false;
+
+      print('SCANNING STARTED');
       setState(() {
         _scanningState = ScanningState.scanningBarcode;
         _statusMessage = "Point camera at product barcode";
       });
 
       await _cameraController!.startImageStream((CameraImage image) async {
-        if (scannedBarcode != null || completer.isCompleted) return;
+        if (completer.isCompleted || isProcessing) return;
 
         try {
-          String? barcode = await _startBarcodeScanning(image);
-          if (barcode != null) {
-            scannedBarcode = barcode;
-            print('SCANNED BARCODE: $barcode');
+          isProcessing = true;
 
-            if (_cameraController!.value.isStreamingImages) {
-              await _cameraController!.stopImageStream();
-            }
+          // Barcode scanning phase
+          if (scannedBarcode == null && !isPriceScanning) {
+            String? barcode = await _startBarcodeScanning(image);
+            if (barcode != null) {
+              scannedBarcode = barcode;
+              print('SCANNED BARCODE: $barcode');
 
-            setState(() {
-              _scanningState = ScanningState.fetchingProduct;
-              _statusMessage = "Fetching Product...";
-            });
-
-            List<Product> productList =
-                await apiservice.getProductByBarcode(barcode, widget.url);
-            productList = productList
-                .where((product) => product.barcode == barcode)
-                .toList();
-
-            if (productList.isEmpty) {
               setState(() {
-                _scanningState = ScanningState.complete;
-                _statusMessage = "No products found with this barcode";
-              });
-              completer.complete(null);
-            } else if (productList.length == 1) {
-              setState(() {
-                _scanningState = ScanningState.complete;
-                _statusMessage = "Product found!";
-              });
-              completer.complete(productList.first);
-            } else {
-              setState(() {
-                _scanningState = ScanningState.scanningPrice;
-                _statusMessage =
-                    "Multiple products found. Point camera at price tag";
+                _scanningState = ScanningState.fetchingProduct;
+                _statusMessage = "Fetching Product...";
               });
 
-              // Set timeout for price scanning
-              _priceInputTimer?.cancel();
-              _priceInputTimer = Timer(Duration(seconds: 5), () async {
-                if (!completer.isCompleted) {
-                  try {
-                    // Stop camera stream
+              productList =
+                  await apiservice.getProductByBarcode(barcode, widget.url);
+              productList = productList!
+                  .where((product) => product.barcode == barcode)
+                  .toList();
+
+              if (productList!.isEmpty) {
+                if (_cameraController!.value.isStreamingImages) {
+                  await _cameraController!.stopImageStream();
+                }
+                setState(() {
+                  _scanningState = ScanningState.complete;
+                  _statusMessage = "No products found with this barcode";
+                });
+                completer.complete(null);
+              } else if (productList!.length == 1) {
+                if (_cameraController!.value.isStreamingImages) {
+                  await _cameraController!.stopImageStream();
+                }
+                setState(() {
+                  _scanningState = ScanningState.complete;
+                  _statusMessage = "Product found!";
+                });
+                completer.complete(productList!.first);
+              } else {
+                isPriceScanning = true;
+                setState(() {
+                  _scanningState = ScanningState.scanningPrice;
+                  _statusMessage =
+                      "Multiple products found. Point camera at price tag";
+                });
+
+                // Set timeout for price scanning
+                _priceInputTimer?.cancel();
+                _priceInputTimer = Timer(Duration(seconds: 5), () async {
+                  if (!completer.isCompleted) {
                     if (_cameraController!.value.isStreamingImages) {
                       await _cameraController!.stopImageStream();
                     }
-                    if (!mounted) return; // Ensure widget is still active
+                    if (!mounted) return;
 
-                    // Update UI state
                     setState(() {
                       _scanningState = ScanningState.complete;
                       _statusMessage = "Price not found. Please enter manually";
                     });
 
-                    // Show manual price input dialog
                     final double? enteredPrice = await showDialog<double>(
-                        context: context,
-                        builder: (BuildContext context) => AlertDialog(
-                              title: Text("Enter Price"),
-                              content: TextField(
-                                controller: _inputController,
-                                keyboardType: TextInputType.numberWithOptions(
-                                    decimal: true),
-                                decoration: InputDecoration(
-                                  hintText: "Enter product price",
-                                  prefixText: '₹ ',
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    final input = _inputController.text;
-                                    final sanitized =
-                                        input.replaceAll(RegExp(r'[^0-9]'), '');
-                                    final price = double.tryParse(sanitized);
+                      context: context,
+                      builder: (BuildContext context) => AlertDialog(
+                        title: Text("Enter Price"),
+                        content: TextField(
+                          controller: _inputController,
+                          keyboardType:
+                              TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            hintText: "Enter product price",
+                            prefixText: '₹ ',
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              final input = _inputController.text;
+                              final sanitized =
+                                  input.replaceAll(RegExp(r'[^0-9]'), '');
+                              final price = double.tryParse(sanitized);
 
-                                    if (price != null) {
-                                      Navigator.pop(context, price);
-                                    } else {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                            content:
-                                                Text("Invalid price format")),
-                                      );
-                                      Navigator.pop(context);
-                                    }
-                                  },
-                                  child: Text("Confirm"),
-                                ),
-                              ],
-                            ));
+                              if (price != null) {
+                                Navigator.pop(context, price);
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text("Invalid price format")),
+                                );
+                                Navigator.pop(context);
+                              }
+                            },
+                            child: Text("Confirm"),
+                          ),
+                        ],
+                      ),
+                    );
+
                     print('ENTERED PRICE :$enteredPrice');
-                    // Find matching product from entered price
                     Product? matProduct;
                     if (enteredPrice != null) {
-                      matProduct = productList.any((product) =>
+                      matProduct = productList!.any((product) =>
                               double.tryParse(product.bmrp.toString()) ==
                               double.tryParse(enteredPrice.toString()))
-                          ? productList.firstWhere((product) =>
+                          ? productList!.firstWhere((product) =>
                               double.tryParse(product.bmrp.toString()) ==
                               double.tryParse(enteredPrice.toString()))
                           : null;
                     }
+
                     if (matProduct != null) {
-                      // Navigate to ProductDetailsPage
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
@@ -392,27 +397,61 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                         ),
                       );
                     } else {
-                      // Show error message if no product matches the entered price
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                             content: Text("No product found with this price")),
                       );
                     }
+
                     if (!completer.isCompleted) {
                       completer.complete(matProduct);
                     }
-                  } catch (e) {
-                    print("Error in price fallback: $e");
-                    if (!completer.isCompleted) completer.complete(null);
                   }
-                }
-              });
-
-              await startPriceScanning(completer, productList);
+                });
+              }
             }
           }
+          // Price scanning phase
+          else if (isPriceScanning && productList != null) {
+            _priceExtractionService =
+                PriceExtractionService(_textRecognizer, _entityExtractor);
+            final inputImage = _convertCameraImageToInputImage(image);
+
+            String? scannedPrice =
+                await _priceExtractionService.extractPriceFromImage(inputImage);
+            print('SCANNED PRICE:$scannedPrice');
+
+            if (scannedPrice != null) {
+              Product? matchingProduct = productList!.any((product) =>
+                      double.tryParse(product.bmrp.toString()) ==
+                      double.tryParse(scannedPrice))
+                  ? productList!.firstWhere((product) =>
+                      double.tryParse(product.bmrp.toString()) ==
+                      double.tryParse(scannedPrice))
+                  : null;
+
+              if (matchingProduct != null && !completer.isCompleted) {
+                print('MATCHED PRODUCT PRICE: ${matchingProduct.bmrp}');
+                _priceInputTimer?.cancel();
+
+                if (_cameraController!.value.isStreamingImages) {
+                  await _cameraController!.stopImageStream();
+                }
+
+                setState(() {
+                  _scanningState = ScanningState.complete;
+                  _statusMessage = "Product found!";
+                });
+
+                completer.complete(matchingProduct);
+              }
+            }
+          }
+
+          isProcessing = false;
         } catch (e) {
           print("Error in scanning: $e");
+          isProcessing = false;
           if (_cameraController!.value.isStreamingImages) {
             await _cameraController!.stopImageStream();
           }
@@ -429,73 +468,6 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
         _statusMessage = "Error: $e";
       });
       return null;
-    }
-  }
-
-  Future<void> startPriceScanning(
-      Completer<Product?> completer, List<Product> products) async {
-    try {
-      if (_cameraController == null ||
-          !_cameraController!.value.isInitialized) {
-        throw Exception("Camera is not initialized");
-      }
-      if (_cameraController!.value.isStreamingImages) return;
-
-      bool isProcessing = false; // Flag to prevent multiple processing
-
-      await _cameraController!.startImageStream((CameraImage image) async {
-        // Return immediately if completer is completed or already processing
-        if (completer.isCompleted || isProcessing) return;
-
-        try {
-          isProcessing = true; // Set processing flag
-          String? scannedPrice = await _processImageForPriceExtraction(image);
-          print('SCANNED PRICE:$scannedPrice');
-
-          if (scannedPrice != null) {
-            // Immediately stop the stream
-            if (_cameraController!.value.isStreamingImages) {
-              await _cameraController!.stopImageStream();
-            }
-
-            Product? matchingProduct = products.any((product) =>
-                    double.tryParse(product.bmrp.toString()) ==
-                    double.tryParse(scannedPrice))
-                ? products.firstWhere((product) =>
-                    double.tryParse(product.bmrp.toString()) ==
-                    double.tryParse(scannedPrice))
-                : null;
-
-            if (matchingProduct != null && !completer.isCompleted) {
-              print('MATCHED PRODUCT PRICE: ${matchingProduct.bmrp}');
-              _priceInputTimer?.cancel();
-              setState(() {
-                _scanningState = ScanningState.complete;
-                _statusMessage = "Product found!";
-              });
-              completer.complete(matchingProduct);
-            } else {
-              isProcessing = false; // Reset processing flag if no match found
-            }
-          } else {
-            isProcessing = false; // Reset processing flag if no price found
-          }
-        } catch (e) {
-          print("Error in price scanning: $e");
-          isProcessing = false; // Reset processing flag on error
-          if (_cameraController!.value.isStreamingImages) {
-            await _cameraController!.stopImageStream();
-          }
-          if (!completer.isCompleted) {
-            completer.completeError(e);
-          }
-        }
-      });
-    } catch (e) {
-      print("Error in price scanning: $e");
-      if (!completer.isCompleted) {
-        completer.completeError(e);
-      }
     }
   }
 
@@ -525,6 +497,10 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
       );
     }
 
+    // Calculate the screen and camera preview ratios
+    final size = MediaQuery.of(context).size;
+    final scale = 1 / (_cameraController!.value.aspectRatio * size.aspectRatio);
+
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
@@ -541,11 +517,13 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
       ),
       body: Stack(
         children: [
-          Center(
-              child: CameraPreview(
-            _cameraController!,
-            child: Text('data'),
-          )),
+          // Camera Preview with Transform
+          Transform.scale(
+            scale: scale,
+            child: Center(
+              child: CameraPreview(_cameraController!),
+            ),
+          ),
 
           // Scanning overlay
           Center(
