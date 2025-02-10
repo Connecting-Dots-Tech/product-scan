@@ -213,49 +213,6 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
     return null;
   }
 
-  // Future<String?> _processImageForPriceExtraction(CameraImage image) async {
-  //   try {
-  //     final inputImage = _convertCameraImageToInputImage(image);
-
-  //     final recognizedText = await _textRecognizer.processImage(inputImage);
-  //     print("Recognized Text: ${recognizedText.text}");
-
-  //     if (recognizedText.text.isNotEmpty) {
-  //       String combinedText = await _priceExtractionService.extractCombinedText(
-  //           recognizedText.blocks, priceKeywords);
-  //       print("Combined Text before preprocessing: $combinedText");
-
-  //       if (combinedText.isEmpty) {
-  //         return null;
-  //       }
-
-  //       String preprocessedText = await _priceExtractionService
-  //           .preprocessTextForEntityExtraction(combinedText);
-  //       print("Preprocessed Combined Text: $preprocessedText");
-
-  //       String extractedPrice = await _priceExtractionService
-  //           .extractPriceUsingNER(preprocessedText, _entityExtractor);
-
-  //       if (extractedPrice.isEmpty) {
-  //         print("NER extraction failed. Falling back to regex.");
-  //         extractedPrice = await _priceExtractionService
-  //             .extractPriceUsingRegex(preprocessedText);
-  //       }
-  //       _textRecognizer.close();
-  //       return extractedPrice;
-  //     } else {
-  //       return null;
-  //     }
-  //   } catch (e) {
-  //     print("Error in price extraction: $e");
-  //     return null;
-  //   }
-  // }
-
-  bool _isLandscape(BuildContext context) {
-    return MediaQuery.orientationOf(context) == Orientation.landscape;
-  }
-
   Future<Product?> productDetails() async {
     try {
       if (_cameraController == null ||
@@ -357,7 +314,7 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                             onPressed: () {
                               final input = _inputController.text;
                               final sanitized =
-                                  input.replaceAll(RegExp(r'[^0-9]'), '');
+                                  input.replaceAll(RegExp(r'[^0-9.]'), '');
                               final price = double.tryParse(sanitized);
 
                               if (price != null) {
@@ -497,39 +454,56 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
       );
     }
 
-    // Calculate the screen and camera preview ratios
     final size = MediaQuery.of(context).size;
-    final scale = 1 / (_cameraController!.value.aspectRatio * size.aspectRatio);
+    final deviceRatio = size.width / size.height;
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        title: Text("Scan Product"),
-        centerTitle: true,
-        bottom: PreferredSize(
-          preferredSize: Size.fromHeight(4.0),
-          child: LinearProgressIndicator(
-            value: _getProgressValue(),
-            backgroundColor: Colors.grey[300],
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-          ),
+        backgroundColor: Colors.transparent, // Makes background transparent
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        title: Text(
+          "Scan Product",
+          style: TextStyle(color: Colors.white),
         ),
+        centerTitle: true,
+        // bottom: PreferredSize(
+        //   preferredSize: Size.fromHeight(4.0),
+        //   child: LinearProgressIndicator(
+        //     value: _getProgressValue(),
+        //     backgroundColor: Colors.grey[300],
+        //     valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+        //   ),
+        // ),
       ),
       body: Stack(
         children: [
-          // Camera Preview with Transform
-          Transform.scale(
-            scale: scale,
-            child: Center(
-              child: CameraPreview(_cameraController!),
+          // Camera Preview - Full Screen
+          SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _cameraController!.value.previewSize!.height,
+                height: _cameraController!.value.previewSize!.width,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CameraPreview(_cameraController!),
+                  ],
+                ),
+              ),
             ),
           ),
 
           // Scanning overlay
           Center(
             child: Container(
-              width: 250,
-              height: 250,
+              width: isLandscape ? size.height * 0.4 : size.width * 0.7,
+              height: isLandscape ? size.height * 0.4 : size.width * 0.7,
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.green, width: 2),
                 borderRadius: BorderRadius.circular(12),
@@ -543,21 +517,32 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
             left: 0,
             right: 0,
             child: Container(
-              padding: EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+              padding: EdgeInsets.symmetric(
+                vertical: 16,
+                horizontal: 24,
+              ),
               color: Colors.black54,
               child: Column(
                 children: [
+                  PreferredSize(
+                    preferredSize: Size.fromHeight(4.0),
+                    child: LinearProgressIndicator(
+                      value: _getProgressValue(),
+                      backgroundColor: Colors.grey[300],
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                    ),
+                  ),
                   Text(
                     _statusMessage,
                     style: TextStyle(color: Colors.white, fontSize: 18),
                     textAlign: TextAlign.center,
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    _getScanningStepText(),
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                    textAlign: TextAlign.center,
-                  ),
+                  // SizedBox(height: 8),
+                  // Text(
+                  //   _getScanningStepText(),
+                  //   style: TextStyle(color: Colors.white70, fontSize: 14),
+                  //   textAlign: TextAlign.center,
+                  // ),
                 ],
               ),
             ),

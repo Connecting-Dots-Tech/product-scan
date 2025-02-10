@@ -14,7 +14,7 @@ class ScanButton extends StatelessWidget {
               context,
               MaterialPageRoute(
                 builder: (context) => PriceExtractorApp(
-                  url: 'http://192.168.43.223:4001/products/barcode/',
+                  url: 'http://192.168.1.48:4001/products/barcode/',
                 ),
               ),
             );
