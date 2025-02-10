@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:price_snap/api_service.dart';
+import 'package:price_snap/product_details_page.dart';
 import 'package:price_snap/product_scanner.dart';
 
 class ScanButton extends StatelessWidget {
@@ -15,6 +17,17 @@ class ScanButton extends StatelessWidget {
               MaterialPageRoute(
                 builder: (context) => PriceExtractorApp(
                   url: 'http://192.168.1.48:4001/products/barcode/',
+                  onResult: (Product? product) {
+                    if (product != null) {
+                      // Display product details
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                ProductDetailsPage(product: product),
+                          ));
+                    }
+                  },
                 ),
               ),
             );

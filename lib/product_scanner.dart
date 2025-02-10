@@ -22,9 +22,12 @@ enum ScanningState {
   complete
 }
 
+typedef ProductCallback = void Function(Product? product);
+
 class PriceExtractorApp extends StatefulWidget {
   final String url;
-  PriceExtractorApp({required this.url, super.key});
+  final ProductCallback onResult;
+  PriceExtractorApp({required this.url, required this.onResult, super.key});
 
   @override
   _PriceExtractorAppState createState() => _PriceExtractorAppState();
@@ -132,17 +135,19 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
     });
 
     product = await productDetails(); // Scan for a product
+    Navigator.pop(context);
+    widget.onResult(product);
 
-    if (product != null && mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ProductDetailsPage(product: product!),
-        ),
-      );
-    } else if (product == null) {
-      Navigator.pop(context);
-    }
+    // if (product != null && mounted) {
+    //   Navigator.pushReplacement(
+    //     context,
+    //     MaterialPageRoute(
+    //       builder: (context) => ProductDetailsPage(product: product!),
+    //     ),
+    //   );
+    // } else if (product == null) {
+    //   Navigator.pop(context);
+    // }
 
     setState(() {
       _isScanning = false;
@@ -170,10 +175,10 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
   }
 
   InputImageRotation _getCameraRotation() {
-    final deviceRotation = _cameraController!.description.sensorOrientation;
-    if (deviceRotation == 90) return InputImageRotation.rotation90deg;
-    if (deviceRotation == 180) return InputImageRotation.rotation180deg;
-    if (deviceRotation == 270) return InputImageRotation.rotation270deg;
+    // final deviceRotation = _cameraController!.description.sensorOrientation;
+    // if (deviceRotation == 90) return InputImageRotation.rotation90deg;
+    // if (deviceRotation == 180) return InputImageRotation.rotation180deg;
+    // if (deviceRotation == 270) return InputImageRotation.rotation270deg;
     return InputImageRotation.rotation0deg;
   }
 
@@ -238,7 +243,6 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
         try {
           isProcessing = true;
 
-          // Barcode scanning phase
           if (scannedBarcode == null && !isPriceScanning) {
             String? barcode = await _startBarcodeScanning(image);
             if (barcode != null) {
@@ -282,14 +286,12 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                       "Multiple products found. Point camera at price tag";
                 });
 
-                // Set timeout for price scanning
                 _priceInputTimer?.cancel();
                 _priceInputTimer = Timer(Duration(seconds: 5), () async {
                   if (!completer.isCompleted) {
                     if (_cameraController!.value.isStreamingImages) {
                       await _cameraController!.stopImageStream();
                     }
-                    if (!mounted) return;
 
                     setState(() {
                       _scanningState = ScanningState.complete;
@@ -320,10 +322,10 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                               if (price != null) {
                                 Navigator.pop(context, price);
                               } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text("Invalid price format")),
-                                );
+                                // ScaffoldMessenger.of(context).showSnackBar(
+                                //   SnackBar(
+                                //       content: Text("Invalid price format")),
+                                // );
                                 Navigator.pop(context);
                               }
                             },
@@ -333,10 +335,9 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                       ),
                     );
 
-                    print('ENTERED PRICE :$enteredPrice');
-                    Product? matProduct;
+                    Product? matchedProduct;
                     if (enteredPrice != null) {
-                      matProduct = productList!.any((product) =>
+                      matchedProduct = productList!.any((product) =>
                               double.tryParse(product.bmrp.toString()) ==
                               double.tryParse(enteredPrice.toString()))
                           ? productList!.firstWhere((product) =>
@@ -345,31 +346,18 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                           : null;
                     }
 
-                    if (matProduct != null) {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              ProductDetailsPage(product: matProduct!),
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text("No product found with this price")),
-                      );
-                    }
+                    // if (matchedProduct == null) {
+                    //   Navigator.pop(context);
+                    // }
 
                     if (!completer.isCompleted) {
-                      completer.complete(matProduct);
+                      completer.complete(matchedProduct);
                     }
                   }
                 });
               }
             }
-          }
-          // Price scanning phase
-          else if (isPriceScanning && productList != null) {
+          } else if (isPriceScanning && productList != null) {
             _priceExtractionService =
                 PriceExtractionService(_textRecognizer, _entityExtractor);
             final inputImage = _convertCameraImageToInputImage(image);
