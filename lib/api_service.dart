@@ -94,8 +94,8 @@ class ApiService {
         return data.map((json) => Product.fromJson(json)).toList();
       } else {
         print('RESPONSECODE:${response.statusCode}');
-        throw ApiException('Failed to fetch products', response.statusCode);
-        //return [];
+        //throw ApiException('Failed to fetch products', response.statusCode);
+        return [];
       }
     } on DioException catch (e) {
       throw ApiException('Network error: ${e.message}', e.response?.statusCode);

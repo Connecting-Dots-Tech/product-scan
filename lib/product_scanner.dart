@@ -473,7 +473,7 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
           // Camera Preview - Full Screen
           SizedBox.expand(
             child: FittedBox(
-              fit: BoxFit.cover,
+              fit: BoxFit.fill,
               child: SizedBox(
                 width: _cameraController!.value.previewSize!.height,
                 height: _cameraController!.value.previewSize!.width,
@@ -520,6 +520,7 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
                     ),
                   ),
+                  SizedBox(height: size.height * 0.01),
                   Text(
                     _statusMessage,
                     style: TextStyle(color: Colors.white, fontSize: 18),
