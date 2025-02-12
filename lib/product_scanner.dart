@@ -175,10 +175,10 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
   }
 
   InputImageRotation _getCameraRotation() {
-    // final deviceRotation = _cameraController!.description.sensorOrientation;
-    // if (deviceRotation == 90) return InputImageRotation.rotation90deg;
-    // if (deviceRotation == 180) return InputImageRotation.rotation180deg;
-    // if (deviceRotation == 270) return InputImageRotation.rotation270deg;
+    final deviceRotation = _cameraController!.description.sensorOrientation;
+    if (deviceRotation == 90) return InputImageRotation.rotation90deg;
+    if (deviceRotation == 180) return InputImageRotation.rotation180deg;
+    if (deviceRotation == 270) return InputImageRotation.rotation270deg;
     return InputImageRotation.rotation0deg;
   }
 
@@ -301,35 +301,59 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                     final double? enteredPrice = await showDialog<double>(
                       context: context,
                       builder: (BuildContext context) => AlertDialog(
-                        title: Text("Enter Price"),
-                        content: TextField(
-                          controller: _inputController,
-                          keyboardType:
-                              TextInputType.numberWithOptions(decimal: true),
-                          decoration: InputDecoration(
-                            hintText: "Enter product price",
-                            prefixText: '₹ ',
+                        title: Text("Enter Product MRP"),
+                        content: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          padding: EdgeInsets.symmetric(horizontal: 15),
+                          child: Row(
+                            children: [
+                              Text(
+                                '₹  ',
+                                style: TextStyle(
+                                    fontSize: 20, color: Colors.grey[350]),
+                              ),
+                              Expanded(
+                                child: TextField(
+                                  controller: _inputController,
+                                  keyboardType: TextInputType.numberWithOptions(
+                                      decimal: true),
+                                  decoration: InputDecoration(
+                                      hintText: "00.00",
+                                      hintStyle:
+                                          TextStyle(color: Colors.grey[350]),
+                                      border: InputBorder.none),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         actions: [
-                          TextButton(
-                            onPressed: () {
-                              final input = _inputController.text;
-                              final sanitized =
-                                  input.replaceAll(RegExp(r'[^0-9.]'), '');
-                              final price = double.tryParse(sanitized);
+                          Center(
+                            child: TextButton(
+                              onPressed: () {
+                                final input = _inputController.text;
+                                final sanitized =
+                                    input.replaceAll(RegExp(r'[^0-9.]'), '');
+                                final price = double.tryParse(sanitized);
 
-                              if (price != null) {
-                                Navigator.pop(context, price);
-                              } else {
-                                // ScaffoldMessenger.of(context).showSnackBar(
-                                //   SnackBar(
-                                //       content: Text("Invalid price format")),
-                                // );
-                                Navigator.pop(context);
-                              }
-                            },
-                            child: Text("Confirm"),
+                                if (price != null) {
+                                  Navigator.pop(context, price);
+                                } else {
+                                  // ScaffoldMessenger.of(context).showSnackBar(
+                                  //   SnackBar(
+                                  //       content: Text("Invalid price format")),
+                                  // );
+                                  Navigator.pop(context);
+                                }
+                              },
+                              child: Text(
+                                "Confirm",
+                                style: TextStyle(color: Colors.green[800]),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -433,7 +457,9 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(),
+              CircularProgressIndicator(
+                color: Colors.green,
+              ),
               SizedBox(height: 20),
               Text(_statusMessage),
             ],
@@ -443,7 +469,7 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
     }
 
     final size = MediaQuery.of(context).size;
-    final deviceRatio = size.width / size.height;
+    //final deviceRatio = size.width / size.height;
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
 
@@ -453,20 +479,17 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
       appBar: AppBar(
         backgroundColor: Colors.transparent, // Makes background transparent
         elevation: 0,
-        surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
         title: Text(
           "Scan Product",
           style: TextStyle(color: Colors.white),
         ),
         centerTitle: true,
-        // bottom: PreferredSize(
-        //   preferredSize: Size.fromHeight(4.0),
-        //   child: LinearProgressIndicator(
-        //     value: _getProgressValue(),
-        //     backgroundColor: Colors.grey[300],
-        //     valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-        //   ),
-        // ),
       ),
       body: Stack(
         children: [
@@ -490,8 +513,8 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
           // Scanning overlay
           Center(
             child: Container(
-              width: isLandscape ? size.height * 0.4 : size.width * 0.7,
-              height: isLandscape ? size.height * 0.4 : size.width * 0.7,
+              width: isLandscape ? size.height * 0.5 : size.width * 0.5,
+              height: isLandscape ? size.height * 0.5 : size.width * 0.5,
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.green, width: 2),
                 borderRadius: BorderRadius.circular(12),
@@ -501,7 +524,7 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
 
           // Status message
           Positioned(
-            bottom: 50,
+            bottom: 20,
             left: 0,
             right: 0,
             child: Container(
