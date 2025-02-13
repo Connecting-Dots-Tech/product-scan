@@ -7,7 +7,7 @@ class ScanButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Product Scanner')),
+      appBar: AppBar(title: const Text('Product Scanner Button')),
       body: Center(
         child: ElevatedButton(
           onPressed: () async {
@@ -16,7 +16,7 @@ class ScanButton extends StatelessWidget {
               context,
               MaterialPageRoute(
                 builder: (context) => PriceExtractorApp(
-                  url: 'http://192.168.115.11:4001/products/barcode/',
+                  url: 'http://192.168.165.11:4001/products/barcode/',
                   onResult: (Product? product) {
                     if (product != null) {
                       // Display product details
@@ -39,7 +39,10 @@ class ScanButton extends StatelessWidget {
               );
             }
           },
-          child: const Text('Scan Product'),
+          child: Text(
+            'SCAN',
+            style: TextStyle(fontSize: 50, color: Colors.green[900]),
+          ),
         ),
       ),
     );

@@ -1,6 +1,10 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:camera/camera.dart';
+import 'package:delightful_toast/delight_toast.dart';
+import 'package:delightful_toast/toast/components/toast_card.dart';
+import 'package:delightful_toast/toast/utils/enums.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
@@ -9,7 +13,7 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:google_mlkit_entity_extraction/google_mlkit_entity_extraction.dart';
 
 import 'package:price_snap/api_service.dart';
-import 'package:price_snap/product_details_page.dart';
+
 import 'price_extraction_service.dart';
 
 enum ScanningState {
@@ -27,13 +31,14 @@ typedef ProductCallback = void Function(Product? product);
 class PriceExtractorApp extends StatefulWidget {
   final String url;
   final ProductCallback onResult;
-  PriceExtractorApp({required this.url, required this.onResult, super.key});
+  const PriceExtractorApp(
+      {required this.url, required this.onResult, super.key});
 
   @override
-  _PriceExtractorAppState createState() => _PriceExtractorAppState();
+  PriceExtractorAppState createState() => PriceExtractorAppState();
 }
 
-class _PriceExtractorAppState extends State<PriceExtractorApp> {
+class PriceExtractorAppState extends State<PriceExtractorApp> {
   CameraController? _cameraController;
   final TextRecognizer _textRecognizer =
       TextRecognizer(script: TextRecognitionScript.latin);
@@ -67,7 +72,7 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
     'Price'
   ];
 
-  late Future<List<Product>> sample;
+  //late Future<List<Product>> sample;
 
   // List<Product> testProductList = [
   //   Product(
@@ -115,6 +120,7 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
 
     try {
       await _cameraController!.initialize();
+
       _handleRefresh();
       //_isCameraInitialized = true;
 
@@ -137,18 +143,6 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
     product = await productDetails(); // Scan for a product
     Navigator.pop(context);
     widget.onResult(product);
-
-    // if (product != null && mounted) {
-    //   Navigator.pushReplacement(
-    //     context,
-    //     MaterialPageRoute(
-    //       builder: (context) => ProductDetailsPage(product: product!),
-    //     ),
-    //   );
-    // } else if (product == null) {
-    //   Navigator.pop(context);
-    // }
-
     setState(() {
       _isScanning = false;
     });
@@ -175,10 +169,6 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
   }
 
   InputImageRotation _getCameraRotation() {
-    final deviceRotation = _cameraController!.description.sensorOrientation;
-    if (deviceRotation == 90) return InputImageRotation.rotation90deg;
-    if (deviceRotation == 180) return InputImageRotation.rotation180deg;
-    if (deviceRotation == 270) return InputImageRotation.rotation270deg;
     return InputImageRotation.rotation0deg;
   }
 
@@ -285,6 +275,15 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                   _statusMessage =
                       "Multiple products found. Point camera at price tag";
                 });
+                DelightToastBar(
+                        position: DelightSnackbarPosition.top,
+                        builder: (context) => ToastCard(
+                              title: Text('Now Scan Price Tag'),
+                              shadowColor: Colors.black26,
+                            ),
+                        snackbarDuration: Duration(seconds: 2),
+                        autoDismiss: true)
+                    .show(context);
 
                 _priceInputTimer?.cancel();
                 _priceInputTimer = Timer(Duration(seconds: 5), () async {
@@ -301,61 +300,62 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                     final double? enteredPrice = await showDialog<double>(
                       context: context,
                       builder: (BuildContext context) => AlertDialog(
-                        title: Text("Enter Product MRP"),
+                        title: Text("Select Product MRP"),
                         content: Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          padding: EdgeInsets.symmetric(horizontal: 15),
-                          child: Row(
-                            children: [
-                              Text(
-                                '₹  ',
-                                style: TextStyle(
-                                    fontSize: 20, color: Colors.grey[350]),
-                              ),
-                              Expanded(
-                                child: TextField(
-                                  controller: _inputController,
-                                  keyboardType: TextInputType.numberWithOptions(
-                                      decimal: true),
-                                  decoration: InputDecoration(
-                                      hintText: "00.00",
-                                      hintStyle:
-                                          TextStyle(color: Colors.grey[350]),
-                                      border: InputBorder.none),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        actions: [
-                          Center(
-                            child: TextButton(
-                              onPressed: () {
-                                final input = _inputController.text;
-                                final sanitized =
-                                    input.replaceAll(RegExp(r'[^0-9.]'), '');
-                                final price = double.tryParse(sanitized);
+                          width: double.minPositive,
+                          height: min(
+                            // Each ListTile typically has a height of 56
+                            // Adding some padding (20) for visual comfort
+                            (productList!.length * 56 + 20).toDouble(),
+                            // Maximum height should be less than screen height
+                            MediaQuery.of(context).size.height * 0.6,
+                          ), // Fixed height for the container
 
-                                if (price != null) {
-                                  Navigator.pop(context, price);
-                                } else {
-                                  // ScaffoldMessenger.of(context).showSnackBar(
-                                  //   SnackBar(
-                                  //       content: Text("Invalid price format")),
-                                  // );
-                                  Navigator.pop(context);
-                                }
+                          padding: const EdgeInsets.all(15),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight:
+                                  MediaQuery.of(context).size.height * 0.8,
+                            ),
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: productList!.length,
+                              itemBuilder: (context, index) {
+                                return Container(
+                                  margin: EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.grey.withOpacity(0.2),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: ListTile(
+                                    contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 4),
+
+                                    //tileColor: Colors.grey[200],
+                                    title: Text(
+                                      '${productList![index].bmrp.toString()}',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                    onTap: () {
+                                      Navigator.pop(
+                                        context,
+                                        double.tryParse(productList![index]
+                                            .bmrp
+                                            .toString()),
+                                      );
+                                    },
+                                  ),
+                                );
                               },
-                              child: Text(
-                                "Confirm",
-                                style: TextStyle(color: Colors.green[800]),
-                              ),
                             ),
                           ),
-                        ],
+                        ),
                       ),
                     );
 
@@ -369,10 +369,6 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
                               double.tryParse(enteredPrice.toString()))
                           : null;
                     }
-
-                    // if (matchedProduct == null) {
-                    //   Navigator.pop(context);
-                    // }
 
                     if (!completer.isCompleted) {
                       completer.complete(matchedProduct);
@@ -451,6 +447,8 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return Scaffold(
         body: Center(
@@ -469,9 +467,6 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
     }
 
     final size = MediaQuery.of(context).size;
-    //final deviceRatio = size.width / size.height;
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -494,6 +489,7 @@ class _PriceExtractorAppState extends State<PriceExtractorApp> {
       body: Stack(
         children: [
           // Camera Preview - Full Screen
+
           SizedBox.expand(
             child: FittedBox(
               fit: BoxFit.fill,
