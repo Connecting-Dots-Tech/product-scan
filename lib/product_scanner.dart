@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:delightful_toast/delight_toast.dart';
@@ -7,6 +6,7 @@ import 'package:delightful_toast/toast/components/toast_card.dart';
 import 'package:delightful_toast/toast/utils/enums.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
 import 'dart:async';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -60,42 +60,6 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
   String _statusMessage = "Initializing camera...";
 
   Timer? _priceInputTimer;
-
-  final List<String> priceKeywords = [
-    'Rs',
-    'M.R.P',
-    'Maximum Retail Price',
-    '₹',
-    'rp',
-    'MRP',
-    'Rupees',
-    'Price'
-  ];
-
-  //late Future<List<Product>> sample;
-
-  // List<Product> testProductList = [
-  //   Product(
-  //       code: '123',
-  //       name: 'Paperage book',
-  //       category: 'Book',
-  //       brand: 'paperage',
-  //       productCode: '123',
-  //       bmrp: '55',
-  //       barcode: '8906150411104',
-  //       discount: '0',
-  //       salesPrice: '55'),
-  //   Product(
-  //       code: '123',
-  //       name: 'Paperage book',
-  //       category: 'Book',
-  //       brand: 'paperage',
-  //       productCode: '123',
-  //       bmrp: '58',
-  //       barcode: '8906150411104',
-  //       discount: '0',
-  //       salesPrice: '55')
-  // ];
 
   @override
   void initState() {
@@ -161,8 +125,9 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
       metadata: InputImageMetadata(
         size: Size(image.width.toDouble(), image.height.toDouble()),
         rotation: _getCameraRotation(), // Utility function for rotation
-        format:
-            InputImageFormat.nv21, // Ensure the format matches camera output
+        format: Platform.isAndroid
+            ? InputImageFormat.nv21
+            : InputImageFormat.bgra8888, // Ensure the format matches camera
         bytesPerRow: image.planes[0].bytesPerRow,
       ),
     );
@@ -272,21 +237,35 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                 isPriceScanning = true;
                 setState(() {
                   _scanningState = ScanningState.scanningPrice;
-                  _statusMessage =
-                      "Multiple products found. Point camera at price tag";
+                  _statusMessage = "Point camera at price tag";
                 });
                 DelightToastBar(
                         position: DelightSnackbarPosition.top,
                         builder: (context) => ToastCard(
-                              title: Text('Now Scan Price Tag'),
-                              shadowColor: Colors.black26,
+                              leading: Container(
+                                padding: EdgeInsets.all(4), // Reduced padding
+                                decoration: BoxDecoration(
+                                    color: Colors.green.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(
+                                        6) // Slightly reduced radius
+                                    ),
+                                child: Icon(Icons.price_change,
+                                    color: Colors.green,
+                                    size: 20), // Smaller icon
+                              ),
+                              title: Text(
+                                'Scan Price Tag with MRP',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
                             ),
+                        animationDuration: Duration(milliseconds: 100),
                         snackbarDuration: Duration(seconds: 2),
                         autoDismiss: true)
                     .show(context);
 
                 _priceInputTimer?.cancel();
-                _priceInputTimer = Timer(Duration(seconds: 5), () async {
+                _priceInputTimer = Timer(Duration(seconds: 6), () async {
                   if (!completer.isCompleted) {
                     if (_cameraController!.value.isStreamingImages) {
                       await _cameraController!.stopImageStream();
@@ -294,62 +273,66 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
 
                     setState(() {
                       _scanningState = ScanningState.complete;
-                      _statusMessage = "Price not found. Please enter manually";
+                      _statusMessage = "Price not found. Please select MRP";
                     });
 
                     final double? enteredPrice = await showDialog<double>(
                       context: context,
                       builder: (BuildContext context) => AlertDialog(
-                        title: Text("Select Product MRP"),
+                        title: Text(
+                          "Select Product MRP",
+                          textAlign: TextAlign.center,
+                        ),
                         content: Container(
-                          width: double.minPositive,
-                          height: min(
-                            // Each ListTile typically has a height of 56
-                            // Adding some padding (20) for visual comfort
-                            (productList!.length * 56 + 20).toDouble(),
-                            // Maximum height should be less than screen height
-                            MediaQuery.of(context).size.height * 0.6,
-                          ), // Fixed height for the container
+                          width: MediaQuery.of(context).size.width *
+                              0.7, // Wider container for grid
+                          height: // Adjusted height for grid
+                              MediaQuery.of(context).size.height * 0.6,
 
                           padding: const EdgeInsets.all(15),
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxHeight:
-                                  MediaQuery.of(context).size.height * 0.8,
-                            ),
-                            child: ListView.builder(
-                              shrinkWrap: true,
+                          child: Scrollbar(
+                            thickness: 6,
+                            radius: Radius.circular(3),
+                            thumbVisibility: true,
+                            child: GridView.builder(
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3, // Two items per row
+                                childAspectRatio:
+                                    4, // Adjust this value to control item height
+                                crossAxisSpacing:
+                                    10, // Horizontal spacing between items
+                                mainAxisSpacing:
+                                    10, // Vertical spacing between items
+                              ),
                               itemCount: productList!.length,
                               itemBuilder: (context, index) {
-                                return Container(
-                                  margin: EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[200],
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: Colors.grey.withOpacity(0.2),
-                                      width: 1,
+                                return InkWell(
+                                  onTap: () {
+                                    Navigator.pop(
+                                      context,
+                                      double.tryParse(
+                                          productList![index].bmrp.toString()),
+                                    );
+                                  },
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.grey.withOpacity(0.2),
+                                        width: 1,
+                                      ),
                                     ),
-                                  ),
-                                  child: ListTile(
-                                    contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 4),
-
-                                    //tileColor: Colors.grey[200],
-                                    title: Text(
-                                      '${productList![index].bmrp.toString()}',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold),
+                                    child: Center(
+                                      child: Text(
+                                        '₹ ${productList![index].bmrp.toString()}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
                                     ),
-                                    onTap: () {
-                                      Navigator.pop(
-                                        context,
-                                        double.tryParse(productList![index]
-                                            .bmrp
-                                            .toString()),
-                                      );
-                                    },
                                   ),
                                 );
                               },
@@ -475,35 +458,22 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
         backgroundColor: Colors.transparent, // Makes background transparent
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: Colors.white70),
           onPressed: () {
             Navigator.pop(context);
           },
         ),
         title: Text(
           "Scan Product",
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Colors.white70),
         ),
         centerTitle: true,
       ),
       body: Stack(
         children: [
           // Camera Preview - Full Screen
-
           SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.fill,
-              child: SizedBox(
-                width: _cameraController!.value.previewSize!.height,
-                height: _cameraController!.value.previewSize!.width,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    CameraPreview(_cameraController!),
-                  ],
-                ),
-              ),
-            ),
+            child: CameraPreview(_cameraController!),
           ),
 
           // Scanning overlay
@@ -535,7 +505,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                     preferredSize: Size.fromHeight(4.0),
                     child: LinearProgressIndicator(
                       value: _getProgressValue(),
-                      backgroundColor: Colors.grey[300],
+                      backgroundColor: Colors.white12,
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
                     ),
                   ),
