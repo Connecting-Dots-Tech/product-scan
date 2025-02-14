@@ -244,31 +244,53 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                   _statusMessage = "Point camera at price tag";
                 });
                 DelightToastBar(
-                        position: DelightSnackbarPosition.top,
-                        builder: (context) => Center(
-                              child: IntrinsicWidth(
-                                child: ToastCard(
-                                  color: Colors.white60,
-                                  leading: Icon(Icons.price_change,
-                                      color: Colors.green),
-                                  title: Container(
-                                    padding:
-                                        EdgeInsets.symmetric(horizontal: 10),
-                                    child: Text(
-                                      'Scan Price Tag with MRP',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                          color: Colors.black),
-                                    ),
-                                  ),
-                                ),
+                  position: DelightSnackbarPosition.top,
+                  builder: (context) => Center(
+                    child: ToastCard(
+                      color: Colors.white,
+                      title: Container(
+                        padding: EdgeInsets.symmetric(
+                            vertical: 10,
+                            horizontal: 12), // Adds padding for emphasis
+                        decoration: BoxDecoration(
+                          color: Colors.green[
+                              50], // Light green background for highlighting
+                          borderRadius:
+                              BorderRadius.circular(8), // Smooth corners
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.green.withOpacity(0.2),
+                              blurRadius: 5,
+                              spreadRadius: 2,
+                            )
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.price_change,
+                                color: Colors.green[900], size: 28),
+                            SizedBox(width: 10),
+                            Text(
+                              ' Scan Price Tag with MRP!',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900, // Extra bold
+                                fontSize: 18, // Slightly bigger for importance
+                                color: Colors.green[
+                                    900], // Dark green for high visibility
+                                letterSpacing: 0.5, // Improves readability
                               ),
                             ),
-                        animationDuration: Duration(milliseconds: 100),
-                        snackbarDuration: Duration(milliseconds: 1000),
-                        autoDismiss: true)
-                    .show(context);
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  animationDuration: Duration(milliseconds: 100),
+                  snackbarDuration: Duration(milliseconds: 1500),
+                  autoDismiss: true,
+                ).show(context);
 
                 _priceInputTimer?.cancel();
                 _priceInputTimer = Timer(Duration(seconds: 6), () async {
