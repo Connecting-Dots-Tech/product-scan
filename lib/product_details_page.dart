@@ -45,12 +45,12 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               const SizedBox(height: 12),
               _buildProductInfo(
                 label: "Sales Price",
-                value: "₹${widget.product.salesPrice}",
+                value: "${widget.product.salesPrice}",
               ),
               const SizedBox(height: 12),
               _buildProductInfo(
                 label: "MRP",
-                value: "₹${widget.product.bmrp}",
+                value: "${widget.product.bmrp}",
               ),
             ],
           ),

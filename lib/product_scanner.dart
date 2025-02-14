@@ -248,15 +248,9 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                         builder: (context) => Center(
                               child: IntrinsicWidth(
                                 child: ToastCard(
-                                  color: Colors.black54,
-                                  leading: Container(
-                                    padding: EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                        color: Colors.white60,
-                                        borderRadius: BorderRadius.circular(6)),
-                                    child: Icon(Icons.price_change,
-                                        color: Colors.green[700]),
-                                  ),
+                                  color: Colors.white60,
+                                  leading: Icon(Icons.price_change,
+                                      color: Colors.green),
                                   title: Container(
                                     padding:
                                         EdgeInsets.symmetric(horizontal: 10),
@@ -265,7 +259,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                                       style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 16,
-                                          color: Colors.white),
+                                          color: Colors.black),
                                     ),
                                   ),
                                 ),
@@ -292,7 +286,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                     final double? enteredPrice = await showDialog<double>(
                       context: context,
                       builder: (BuildContext context) => AlertDialog(
-                        backgroundColor: Colors.white54,
+                        backgroundColor: Colors.white60,
                         title: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -350,7 +344,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                                   },
                                   child: Container(
                                     decoration: BoxDecoration(
-                                      color: Colors.white60,
+                                      color: Colors.white,
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
                                         color: Colors.grey.withOpacity(0.2),
@@ -561,7 +555,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                     child: LinearProgressIndicator(
                       value: _getProgressValue(),
                       backgroundColor: Colors.white12,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   ),
                   SizedBox(height: size.height * 0.01),
