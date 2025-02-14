@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:delightful_toast/delight_toast.dart';
@@ -26,7 +27,7 @@ enum ScanningState {
   complete
 }
 
-typedef ProductCallback = void Function(Product? product);
+typedef ProductCallback = void Function(ProductModel? product);
 
 class PriceExtractorApp extends StatefulWidget {
   final String url;
@@ -54,7 +55,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
 
   bool _isScanning = false;
 
-  Product? product;
+  ProductModel? product;
 
   ScanningState _scanningState = ScanningState.preparingCamera;
   String _statusMessage = "Initializing camera...";
@@ -84,7 +85,8 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
 
     try {
       await _cameraController!.initialize();
-
+      await _cameraController!
+          .lockCaptureOrientation(DeviceOrientation.portraitUp);
       _handleRefresh();
       //_isCameraInitialized = true;
 
@@ -173,18 +175,19 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
     return null;
   }
 
-  Future<Product?> productDetails() async {
+  Future<ProductModel?> productDetails() async {
     try {
       if (_cameraController == null ||
           !_cameraController!.value.isInitialized) {
         throw Exception("Camera is not initialized");
       }
 
-      final completer = Completer<Product?>();
+      final completer = Completer<ProductModel?>();
       String? scannedBarcode;
       bool isPriceScanning = false;
-      List<Product>? productList;
+      List<ProductModel>? productList;
       bool isProcessing = false;
+      bool isManualInputRequested = false;
 
       print('SCANNING STARTED');
       setState(() {
@@ -193,7 +196,8 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
       });
 
       await _cameraController!.startImageStream((CameraImage image) async {
-        if (completer.isCompleted || isProcessing) return;
+        if (completer.isCompleted || isProcessing || isManualInputRequested)
+          return;
 
         try {
           isProcessing = true;
@@ -241,54 +245,86 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                 });
                 DelightToastBar(
                         position: DelightSnackbarPosition.top,
-                        builder: (context) => ToastCard(
-                              leading: Container(
-                                padding: EdgeInsets.all(4), // Reduced padding
-                                decoration: BoxDecoration(
-                                    color: Colors.green.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(
-                                        6) // Slightly reduced radius
+                        builder: (context) => Center(
+                              child: IntrinsicWidth(
+                                child: ToastCard(
+                                  color: Colors.black54,
+                                  leading: Container(
+                                    padding: EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                        color: Colors.white60,
+                                        borderRadius: BorderRadius.circular(6)),
+                                    child: Icon(Icons.price_change,
+                                        color: Colors.green[700]),
+                                  ),
+                                  title: Container(
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 10),
+                                    child: Text(
+                                      'Scan Price Tag with MRP',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                          color: Colors.white),
                                     ),
-                                child: Icon(Icons.price_change,
-                                    color: Colors.green,
-                                    size: 20), // Smaller icon
-                              ),
-                              title: Text(
-                                'Scan Price Tag with MRP',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                ),
                               ),
                             ),
                         animationDuration: Duration(milliseconds: 100),
-                        snackbarDuration: Duration(seconds: 2),
+                        snackbarDuration: Duration(milliseconds: 1000),
                         autoDismiss: true)
                     .show(context);
 
                 _priceInputTimer?.cancel();
                 _priceInputTimer = Timer(Duration(seconds: 6), () async {
-                  if (!completer.isCompleted) {
+                  if (!completer.isCompleted && !isManualInputRequested) {
+                    isManualInputRequested = true;
                     if (_cameraController!.value.isStreamingImages) {
                       await _cameraController!.stopImageStream();
                     }
 
                     setState(() {
-                      _scanningState = ScanningState.complete;
+                      _scanningState = ScanningState.manualPriceInput;
                       _statusMessage = "Price not found. Please select MRP";
                     });
 
                     final double? enteredPrice = await showDialog<double>(
                       context: context,
                       builder: (BuildContext context) => AlertDialog(
-                        title: Text(
-                          "Select Product MRP",
-                          textAlign: TextAlign.center,
+                        backgroundColor: Colors.white54,
+                        title: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            SizedBox(
+                              width: 5,
+                            ),
+                            Text(
+                              "Select Product MRP",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.black),
+                            ),
+                            IconButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                              },
+                              icon: Icon(
+                                Icons.cancel_outlined,
+                                color: Colors.black,
+                                size: 30,
+                              ),
+                            ),
+                          ],
                         ),
                         content: Container(
-                          width: MediaQuery.of(context).size.width *
-                              0.7, // Wider container for grid
-                          height: // Adjusted height for grid
-                              MediaQuery.of(context).size.height * 0.6,
-
+                          width: MediaQuery.of(context).size.width * 0.7,
+                          height: min(
+                              MediaQuery.of(context).size.height *
+                                  0.6, // Max height (60% of screen)
+                              100.0 +
+                                  (productList!.length / 3).ceil() *
+                                      50.0 // Base height + rows height
+                              ),
                           padding: const EdgeInsets.all(15),
                           child: Scrollbar(
                             thickness: 6,
@@ -297,13 +333,10 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                             child: GridView.builder(
                               gridDelegate:
                                   SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3, // Two items per row
-                                childAspectRatio:
-                                    4, // Adjust this value to control item height
-                                crossAxisSpacing:
-                                    10, // Horizontal spacing between items
-                                mainAxisSpacing:
-                                    10, // Vertical spacing between items
+                                crossAxisCount: 3,
+                                childAspectRatio: 4,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 10,
                               ),
                               itemCount: productList!.length,
                               itemBuilder: (context, index) {
@@ -317,7 +350,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                                   },
                                   child: Container(
                                     decoration: BoxDecoration(
-                                      color: Colors.grey[200],
+                                      color: Colors.white60,
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
                                         color: Colors.grey.withOpacity(0.2),
@@ -325,14 +358,26 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                                       ),
                                     ),
                                     child: Center(
-                                      child: Text(
-                                        '₹ ${productList![index].bmrp.toString()}',
+                                        child: RichText(
+                                      text: TextSpan(
+                                        text: 'MRP : ',
                                         style: TextStyle(
+                                          color: Colors.black45,
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 16,
+                                          fontSize: 14,
                                         ),
+                                        children: [
+                                          TextSpan(
+                                            text: '${productList![index].bmrp}',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                              color: Colors.black,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ),
+                                    )),
                                   ),
                                 );
                               },
@@ -342,7 +387,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                       ),
                     );
 
-                    Product? matchedProduct;
+                    ProductModel? matchedProduct;
                     if (enteredPrice != null) {
                       matchedProduct = productList!.any((product) =>
                               double.tryParse(product.bmrp.toString()) ==
@@ -353,6 +398,13 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                           : null;
                     }
 
+                    setState(() {
+                      _scanningState = ScanningState.complete;
+                      _statusMessage = matchedProduct != null
+                          ? "Product found!"
+                          : "No matching product found";
+                    });
+
                     if (!completer.isCompleted) {
                       completer.complete(matchedProduct);
                     }
@@ -360,7 +412,9 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                 });
               }
             }
-          } else if (isPriceScanning && productList != null) {
+          } else if (isPriceScanning &&
+              productList != null &&
+              !isManualInputRequested) {
             _priceExtractionService =
                 PriceExtractionService(_textRecognizer, _entityExtractor);
             final inputImage = _convertCameraImageToInputImage(image);
@@ -370,7 +424,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
             print('SCANNED PRICE:$scannedPrice');
 
             if (scannedPrice != null) {
-              Product? matchingProduct = productList!.any((product) =>
+              ProductModel? matchingProduct = productList!.any((product) =>
                       double.tryParse(product.bmrp.toString()) ==
                       double.tryParse(scannedPrice))
                   ? productList!.firstWhere((product) =>
@@ -381,6 +435,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
               if (matchingProduct != null && !completer.isCompleted) {
                 print('MATCHED PRODUCT PRICE: ${matchingProduct.bmrp}');
                 _priceInputTimer?.cancel();
+                isManualInputRequested = true;
 
                 if (_cameraController!.value.isStreamingImages) {
                   await _cameraController!.stopImageStream();

@@ -15,55 +15,73 @@ class ApiException implements Exception {
 }
 
 // Product Model
-class Product {
-  final String code;
-  final String name;
-  final String category;
-  final String brand;
-  final String productCode;
-  final String bmrp;
-  final String barcode;
-  final String discount;
-
-  final String salesPrice;
-
-  const Product({
-    required this.code,
-    required this.name,
-    required this.category,
-    required this.brand,
-    required this.productCode,
-    required this.bmrp,
-    required this.barcode,
-    required this.discount,
-    required this.salesPrice,
+class ProductModel {
+  ProductModel({
+    this.code,
+    this.name,
+    this.category,
+    this.brand,
+    this.productCode,
+    this.salesPrice,
+    this.bmrp,
+    this.discount,
+    this.barcode,
   });
 
-  factory Product.fromJson(Map<String, dynamic> json) {
-    return Product(
-      code: json['code']?.toString() ?? '',
-      name: json['name']?.toString() ?? '',
-      category: json['category']?.toString() ?? '',
-      brand: json['brand']?.toString() ?? '',
-      productCode: json['productCode']?.toString() ?? '',
-      barcode: json['barcode']?.toString() ?? '',
-      bmrp: json['bmrp']?.toString() ?? '',
-      discount: json['discount']?.toString() ?? '',
-      salesPrice: json['saleprice']?.toString() ?? '',
-    );
+  ProductModel.fromJson(dynamic json) {
+    code = json['code'];
+    name = json['name'];
+    category = json['category'];
+    brand = json['brand'];
+    productCode = json['productCode'];
+    // Handle different types for salesPrice
+    if (json['salesPrice'] != null) {
+      if (json['salesPrice'] is int) {
+        salesPrice = (json['salesPrice'] as int).toDouble();
+      } else if (json['salesPrice'] is double) {
+        salesPrice = json['salesPrice'];
+      }
+    }
+    if (json['bmrp'] != null) {
+      if (json['bmrp'] is int) {
+        bmrp = (json['bmrp'] as int).toDouble();
+      } else if (json['bmrp'] is double) {
+        bmrp = json['bmrp'];
+      }
+    }
+    if (json['discount'] != null) {
+      if (json['discount'] is int) {
+        discount = (json['discount'] as int).toDouble();
+      } else if (json['discount'] is double) {
+        discount = json['discount'];
+      }
+    }
+    barcode = json['barcode'];
   }
 
-  Map<String, dynamic> toJson() => {
-        'code': code,
-        'name': name,
-        'category': category,
-        'brand': brand,
-        'productCode': productCode,
-        'barcode': barcode,
-        'bmrp': bmrp,
-        'discount': discount,
-        'saleprice': salesPrice,
-      };
+  String? code;
+  String? name;
+  String? category;
+  String? brand;
+  String? productCode;
+  double? salesPrice;
+  double? discount;
+  double? bmrp;
+  String? barcode;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{};
+    map['code'] = code;
+    map['name'] = name;
+    map['category'] = category;
+    map['brand'] = brand;
+    map['productCode'] = productCode;
+    map['salesPrice'] = salesPrice;
+    map['barcode'] = barcode;
+    map['bmrp'] = bmrp;
+    map['discount'] = discount;
+    return map;
+  }
 }
 
 // API Service
@@ -82,7 +100,8 @@ class ApiService {
     };
   }
 
-  Future<List<Product>> getProductByBarcode(String barcode, String url) async {
+  Future<List<ProductModel>> getProductByBarcode(
+      String barcode, String url) async {
     try {
       print('READY TO CALL API');
       final response = await _dio.get('$url$barcode');
@@ -91,7 +110,7 @@ class ApiService {
         print(response.data);
         final List<dynamic> data = response.data;
         print(data);
-        return data.map((json) => Product.fromJson(json)).toList();
+        return data.map((json) => ProductModel.fromJson(json)).toList();
       } else {
         print('RESPONSECODE:${response.statusCode}');
         //throw ApiException('Failed to fetch products', response.statusCode);

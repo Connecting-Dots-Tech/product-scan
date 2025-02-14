@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:price_snap/api_service.dart';
 
 class ProductDetailsPage extends StatefulWidget {
-  final Product product;
+  final ProductModel product;
 
   const ProductDetailsPage({Key? key, required this.product}) : super(key: key);
 
@@ -34,7 +34,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
             children: [
               _buildProductInfo(
                 label: "Name",
-                value: widget.product.name,
+                value: '${widget.product.name}',
                 isTitle: true,
               ),
               const SizedBox(height: 16),
@@ -44,8 +44,13 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               ),
               const SizedBox(height: 12),
               _buildProductInfo(
-                label: "MRP",
+                label: "Sales Price",
                 value: "₹${widget.product.salesPrice}",
+              ),
+              const SizedBox(height: 12),
+              _buildProductInfo(
+                label: "MRP",
+                value: "₹${widget.product.bmrp}",
               ),
             ],
           ),
