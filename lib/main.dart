@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 //import 'package:price_snap/price_extractor.dart';
-import 'package:price_snap/scan_button.dart';
+import 'package:price_snap/pages/scan_button.dart';
 
 void main() {
   runApp(MyApp());

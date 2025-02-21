@@ -1,12 +1,10 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
-import 'package:price_snap/api_service.dart';
+import 'package:price_snap/model/product_model.dart';
 
 class ProductDetailsPage extends StatefulWidget {
   final ProductModel product;
 
-  const ProductDetailsPage({Key? key, required this.product}) : super(key: key);
+  const ProductDetailsPage({super.key, required this.product});
 
   @override
   State<ProductDetailsPage> createState() => _ProductDetailsPageState();

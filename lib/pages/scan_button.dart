@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:price_snap/api_service.dart';
-import 'package:price_snap/product_details_page.dart';
-import 'package:price_snap/product_scanner.dart';
+
+import 'package:price_snap/pages/product_scanner.dart';
+
+import 'product_details_page.dart';
 
 class ScanButton extends StatelessWidget {
   @override
@@ -12,12 +13,13 @@ class ScanButton extends StatelessWidget {
         child: ElevatedButton(
           onPressed: () async {
             // Navigate to the scanning page
-            final product = await Navigator.push(
+            Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => PriceExtractorApp(
+                builder: (context) => ProductScanner(
                   url: 'http://192.168.106.11:4001/products/barcode/',
-                  onResult: (ProductModel? product) {
+                  onResult: (product) {
+                    print('In SCAN BUTTON: ${product!.bmrp}');
                     if (product != null) {
                       // Display product details
                       Navigator.push(
@@ -32,12 +34,12 @@ class ScanButton extends StatelessWidget {
               ),
             );
 
-            if (product != null) {
-              // Display product details
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Product: ${product.name}')),
-              );
-            }
+            // if (product != null) {
+            //   // Display product details
+            //   ScaffoldMessenger.of(context).showSnackBar(
+            //     SnackBar(content: Text('Product: ${product.name}')),
+            //   );
+            // }
           },
           child: Text(
             'SCAN',

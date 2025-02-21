@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:camera/camera.dart';
+
 import 'package:delightful_toast/delight_toast.dart';
 import 'package:delightful_toast/toast/components/toast_card.dart';
 import 'package:delightful_toast/toast/utils/enums.dart';
@@ -12,10 +13,12 @@ import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart
 import 'dart:async';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:google_mlkit_entity_extraction/google_mlkit_entity_extraction.dart';
+import 'package:permission_handler/permission_handler.dart';
 
-import 'package:price_snap/api_service.dart';
+import 'package:price_snap/model/product_model.dart';
 
-import 'price_extraction_service.dart';
+import '../services/api_service.dart';
+import '../services/price_extraction_service.dart';
 
 enum ScanningState {
   preparingCamera,
@@ -29,57 +32,82 @@ enum ScanningState {
 
 typedef ProductCallback = void Function(ProductModel? product);
 
-class PriceExtractorApp extends StatefulWidget {
+class ProductScanner extends StatefulWidget {
   final String url;
   final ProductCallback onResult;
-  const PriceExtractorApp(
-      {required this.url, required this.onResult, super.key});
+  const ProductScanner({required this.url, required this.onResult, super.key});
 
   @override
-  PriceExtractorAppState createState() => PriceExtractorAppState();
+  ProductScannerState createState() => ProductScannerState();
 }
 
-class PriceExtractorAppState extends State<PriceExtractorApp> {
+class ProductScannerState extends State<ProductScanner> {
   CameraController? _cameraController;
   final TextRecognizer _textRecognizer =
       TextRecognizer(script: TextRecognitionScript.latin);
+  final EntityExtractor _entityExtractor =
+      EntityExtractor(language: EntityExtractorLanguage.english);
+
   final BarcodeScanner _barcodeScanner =
       BarcodeScanner(formats: [BarcodeFormat.all]);
-  late EntityExtractor _entityExtractor;
+
   late PriceExtractionService _priceExtractionService;
 
-  final TextEditingController _inputController = TextEditingController();
   ApiService apiservice = ApiService();
 
   // bool _isCameraInitialized = false;
+  String errormessage = '';
 
   bool _isScanning = false;
 
   ProductModel? product;
 
   ScanningState _scanningState = ScanningState.preparingCamera;
-  String _statusMessage = "Initializing camera...";
+  String _statusMessage = "Opening Scanner...";
 
   Timer? _priceInputTimer;
+
+  List<CameraDescription> cameras = [];
+  int _selectedCameraIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _initializeCamera();
-    _entityExtractor =
-        EntityExtractor(language: EntityExtractorLanguage.english);
-    _inputController.addListener(() {
-      setState(() {});
-    });
+    _requestCameraPermission();
+  }
+
+  Future<void> _requestCameraPermission() async {
+    final status = await Permission.camera.request();
+
+    if (status.isGranted) {
+      _initializeCamera();
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Camera permission is required'),
+            action: SnackBarAction(
+              label: 'Open Settings',
+              onPressed: () async {
+                await openAppSettings();
+              },
+            ),
+            duration: Duration(seconds: 5),
+          ),
+        );
+        // Return to previous screen since we can't proceed without camera
+        Navigator.pop(context);
+      }
+    }
   }
 
   Future<void> _initializeCamera() async {
-    final cameras = await availableCameras();
-    final firstCamera = cameras.first;
+    cameras = await availableCameras();
+    _selectedCameraIndex = 0;
 
     _cameraController = CameraController(
-      firstCamera,
-      ResolutionPreset.high,
+      cameras[_selectedCameraIndex],
+      ResolutionPreset.max,
       enableAudio: false,
     );
 
@@ -87,7 +115,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
       await _cameraController!.initialize();
       await _cameraController!
           .lockCaptureOrientation(DeviceOrientation.portraitUp);
-      _handleRefresh();
+      //_handleRefresh();
       //_isCameraInitialized = true;
 
       _startScanning();
@@ -99,19 +127,65 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
     }
   }
 
+  Future<void> _toggleCameraUsingSetDescription() async {
+    try {
+      // Stop current image stream if running
+      if (_cameraController?.value.isStreamingImages ?? false) {
+        await _cameraController?.stopImageStream();
+      }
+
+      // Toggle camera index
+      _selectedCameraIndex = (_selectedCameraIndex + 1) % cameras.length;
+
+      setState(() {
+        _scanningState = ScanningState.preparingCamera;
+        _statusMessage = "Switching camera...";
+        _isScanning = false;
+      });
+
+      // Set new camera description
+      await _cameraController?.setDescription(cameras[_selectedCameraIndex]);
+
+      // Reinitialize with new description
+      await _cameraController?.initialize();
+      await _cameraController
+          ?.lockCaptureOrientation(DeviceOrientation.portraitUp);
+
+      // Restart scanning
+      _startScanning();
+    } catch (e) {
+      print("Error switching camera: $e");
+    }
+  }
+
   Future<void> _startScanning() async {
     if (_cameraController == null || _isScanning) return;
 
-    setState(() {
-      _isScanning = true;
-    });
+    try {
+      setState(() {
+        _isScanning = true;
+      });
 
-    product = await productDetails(); // Scan for a product
-    Navigator.pop(context);
-    widget.onResult(product);
-    setState(() {
-      _isScanning = false;
-    });
+      product = await productDetails(); // Scan for a product
+
+      // Only pop and return result if the scanning wasn't cancelled
+      if (mounted) {
+        Navigator.pop(context);
+        widget.onResult(product); // Call the callback with the result
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error scanning product: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+        });
+      }
+    }
   }
 
   // Function to convert CameraImage to InputImage
@@ -186,6 +260,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
       String? scannedBarcode;
       bool isPriceScanning = false;
       List<ProductModel>? productList;
+      ProductModel? matchedProduct;
       bool isProcessing = false;
       bool isManualInputRequested = false;
 
@@ -213,12 +288,109 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                 _statusMessage = "Fetching Product...";
               });
 
-              productList =
+              final response =
                   await apiservice.getProductByBarcode(barcode, widget.url);
-              productList = productList!
-                  .where((product) => product.barcode == barcode)
-                  .toList();
+              if (!response.isSuccess || response.data == null) {
+                // ScaffoldMessenger.of(context).showSnackBar(
+                //   SnackBar(
+                //       content: Text(response.error ?? 'An error occurred')),
+                // );
+                setState(() {
+                  _scanningState = ScanningState.scanningBarcode;
+                  _statusMessage = 'Point camera at product barcode';
+                  errormessage = response.error ?? 'An error occurred';
+                });
+                if (_cameraController!.value.isStreamingImages) {
+                  await _cameraController!.stopImageStream();
+                }
+                // if (!completer.isCompleted) {
+                //   completer.complete(null);
+                // }
 
+                // Show rescan dialog
+                bool? shouldRescan = await showDialog<bool>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: Text(
+                        response.error ?? 'Scanning Failed',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      content: Text(
+                        'Do you want to scan again ?',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      actionsAlignment: MainAxisAlignment.spaceBetween,
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: Text(
+                            'Cancel',
+                            style: TextStyle(
+                                color: Colors.green[900],
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        TextButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: Text(
+                              'Ok',
+                              style: TextStyle(
+                                  color: Colors.green[900],
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold),
+                            )),
+                      ],
+                    );
+                  },
+                );
+
+                if (shouldRescan == true) {
+                  // Stop current image stream
+                  if (_cameraController!.value.isStreamingImages) {
+                    await _cameraController!.stopImageStream();
+                  }
+
+                  // Start a completely new scan cycle
+                  await Future.delayed(Duration(milliseconds: 500));
+                  scannedBarcode = null;
+                  isPriceScanning = false;
+                  productList = null;
+                  isProcessing = false;
+                  isManualInputRequested = false;
+                  matchedProduct = null;
+                  setState(() {
+                    _isScanning = false;
+                  });
+                  // Instead of calling _handleRefresh, return a new productDetails() call
+                  await _startScanning(); // This will create a new completer and start fresh
+                  return;
+                } else {
+                  // User chose to go back
+                  setState(() {
+                    _scanningState = ScanningState.complete;
+                    _statusMessage = "";
+                  });
+                  if (!completer.isCompleted) {
+                    completer.complete(null);
+                  }
+                }
+              }
+
+              productList = response.data;
+              // Modified filtering logic to handle barcode variations
+              // productList = productList!
+              //     .where((product) =>
+              //         product.barcode?.split(':')[0].replaceAll(' ', '') ==
+              //         barcode.replaceAll(' ', ''))
+              //     .toList();
+              print(productList);
               if (productList!.isEmpty) {
                 if (_cameraController!.value.isStreamingImages) {
                   await _cameraController!.stopImageStream();
@@ -226,6 +398,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                 setState(() {
                   _scanningState = ScanningState.complete;
                   _statusMessage = "No products found with this barcode";
+                  errormessage = 'No products found with this barcode';
                 });
                 completer.complete(null);
               } else if (productList!.length == 1) {
@@ -294,8 +467,11 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
 
                 _priceInputTimer?.cancel();
                 _priceInputTimer = Timer(Duration(seconds: 6), () async {
+                  // Check if we already have a match from scanning
                   if (!completer.isCompleted && !isManualInputRequested) {
                     isManualInputRequested = true;
+                    isPriceScanning = false;
+
                     if (_cameraController!.value.isStreamingImages) {
                       await _cameraController!.stopImageStream();
                     }
@@ -305,7 +481,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                       _statusMessage = "Price not found. Please select MRP";
                     });
 
-                    final double? enteredPrice = await showDialog<double>(
+                    final double? selectedPrice = await showDialog<double>(
                       context: context,
                       builder: (BuildContext context) => AlertDialog(
                         backgroundColor: Colors.white60,
@@ -403,14 +579,13 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                       ),
                     );
 
-                    ProductModel? matchedProduct;
-                    if (enteredPrice != null) {
+                    if (selectedPrice != null) {
                       matchedProduct = productList!.any((product) =>
                               double.tryParse(product.bmrp.toString()) ==
-                              double.tryParse(enteredPrice.toString()))
+                              double.tryParse(selectedPrice.toString()))
                           ? productList!.firstWhere((product) =>
                               double.tryParse(product.bmrp.toString()) ==
-                              double.tryParse(enteredPrice.toString()))
+                              double.tryParse(selectedPrice.toString()))
                           : null;
                     }
 
@@ -418,9 +593,10 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                       _scanningState = ScanningState.complete;
                       _statusMessage = matchedProduct != null
                           ? "Product found!"
-                          : "No matching product found";
+                          : "Scanning Completed";
                     });
 
+                    // Final check before completing
                     if (!completer.isCompleted) {
                       completer.complete(matchedProduct);
                     }
@@ -440,7 +616,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
             print('SCANNED PRICE:$scannedPrice');
 
             if (scannedPrice != null) {
-              ProductModel? matchingProduct = productList!.any((product) =>
+              matchedProduct = productList!.any((product) =>
                       double.tryParse(product.bmrp.toString()) ==
                       double.tryParse(scannedPrice))
                   ? productList!.firstWhere((product) =>
@@ -448,11 +624,16 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                       double.tryParse(scannedPrice))
                   : null;
 
-              if (matchingProduct != null && !completer.isCompleted) {
-                print('MATCHED PRODUCT PRICE: ${matchingProduct.bmrp}');
+              if (matchedProduct != null && !completer.isCompleted) {
+                print('MATCHED PRODUCT PRICE: ${matchedProduct!.bmrp}');
+                // Cancel timer first to prevent it from triggering
                 _priceInputTimer?.cancel();
-                isManualInputRequested = true;
 
+                // Set flags before completing the future
+                isManualInputRequested = true;
+                isPriceScanning = false;
+
+                // Stop camera stream before completing the future
                 if (_cameraController!.value.isStreamingImages) {
                   await _cameraController!.stopImageStream();
                 }
@@ -462,7 +643,14 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
                   _statusMessage = "Product found!";
                 });
 
-                completer.complete(matchingProduct);
+                // Add a small delay to ensure all state updates are processed
+                await Future.delayed(Duration(milliseconds: 100));
+
+                // Final check before completing
+                if (!completer.isCompleted) {
+                  print('Completing with matched product');
+                  completer.complete(matchedProduct);
+                }
               }
             }
           }
@@ -490,13 +678,18 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
     }
   }
 
-  void _handleRefresh() async {
+  Future<void> _handleRefresh() async {
     setState(() {
       _isScanning = false;
       _scanningState = ScanningState.scanningBarcode;
       _statusMessage = "Point camera at product barcode";
     });
-    _startScanning();
+    await _startScanning();
+  }
+
+  bool get isFrontCamera {
+    return _cameraController?.description.lensDirection ==
+        CameraLensDirection.front;
   }
 
   @override
@@ -543,59 +736,88 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
       body: Stack(
         children: [
           // Camera Preview - Full Screen
-          SizedBox.expand(
-            child: CameraPreview(_cameraController!),
-          ),
-
-          // Scanning overlay
-          Center(
-            child: Container(
-              width: isLandscape ? size.height * 0.5 : size.width * 0.5,
-              height: isLandscape ? size.height * 0.5 : size.width * 0.5,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.green, width: 2),
-                borderRadius: BorderRadius.circular(12),
-              ),
+          Transform.scale(
+            scaleX: isFrontCamera ? 1 : 1,
+            scaleY: isFrontCamera ? -1 : 1,
+            child: SizedBox.expand(
+              child: CameraPreview(_cameraController!),
             ),
           ),
 
           // Status message
-          Positioned(
-            bottom: 20,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                vertical: 16,
-                horizontal: 24,
-              ),
-              color: Colors.black54,
-              child: Column(
-                children: [
-                  PreferredSize(
-                    preferredSize: Size.fromHeight(4.0),
-                    child: LinearProgressIndicator(
-                      value: _getProgressValue(),
-                      backgroundColor: Colors.white12,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+
+          if (_scanningState != ScanningState.fetchingProduct)
+            Positioned(
+              bottom: 20,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 24,
+                ),
+                color: Colors.black54,
+                child: Column(
+                  children: [
+                    PreferredSize(
+                      preferredSize: Size.fromHeight(4.0),
+                      child: LinearProgressIndicator(
+                        value: _getProgressValue(),
+                        backgroundColor: Colors.white12,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
                     ),
-                  ),
-                  SizedBox(height: size.height * 0.01),
-                  Text(
-                    _statusMessage,
-                    style: TextStyle(color: Colors.white, fontSize: 18),
-                    textAlign: TextAlign.center,
-                  ),
-                  // SizedBox(height: 8),
-                  // Text(
-                  //   _getScanningStepText(),
-                  //   style: TextStyle(color: Colors.white70, fontSize: 14),
-                  //   textAlign: TextAlign.center,
-                  // ),
-                ],
+                    SizedBox(height: size.height * 0.01),
+                    Text(
+                      _statusMessage,
+                      style: TextStyle(color: Colors.white, fontSize: 18),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          Align(
+            alignment: Alignment(0, 0.7),
+            child: Container(
+              height: 90,
+              width: 90,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withOpacity(0.7),
+              ),
+              child: GestureDetector(
+                child: const Icon(
+                  Icons.flip_camera_android_rounded,
+                  size: 50,
+                  color: Colors.white,
+                ),
+                onTap: () async {
+                  _toggleCameraUsingSetDescription();
+                },
               ),
             ),
           ),
+          if (_scanningState == ScanningState.fetchingProduct)
+            Container(
+              color: Colors.black54,
+              width: double.infinity,
+              height: double.infinity,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 20),
+                    Text(
+                      _statusMessage,
+                      style: TextStyle(color: Colors.white, fontSize: 18),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -643,7 +865,7 @@ class PriceExtractorAppState extends State<PriceExtractorApp> {
   void dispose() {
     _cameraController?.dispose();
     _barcodeScanner.close();
-    _inputController.dispose();
+
     _textRecognizer.close();
     _entityExtractor.close();
     _priceInputTimer?.cancel();
