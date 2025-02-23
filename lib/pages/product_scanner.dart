@@ -69,6 +69,12 @@ class ProductScannerState extends State<ProductScanner> {
 
   List<CameraDescription> cameras = [];
   int _selectedCameraIndex = 0;
+  String? scannedBarcode;
+  bool isPriceScanning = false;
+  List<ProductModel>? productList;
+  ProductModel? matchedProduct;
+  bool isProcessing = false;
+  bool isManualInputRequested = false;
 
   @override
   void initState() {
@@ -107,7 +113,7 @@ class ProductScannerState extends State<ProductScanner> {
 
     _cameraController = CameraController(
       cameras[_selectedCameraIndex],
-      ResolutionPreset.max,
+      ResolutionPreset.high,
       enableAudio: false,
     );
 
@@ -129,6 +135,7 @@ class ProductScannerState extends State<ProductScanner> {
 
   Future<void> _toggleCameraUsingSetDescription() async {
     try {
+      _priceInputTimer?.cancel();
       // Stop current image stream if running
       if (_cameraController?.value.isStreamingImages ?? false) {
         await _cameraController?.stopImageStream();
@@ -136,6 +143,15 @@ class ProductScannerState extends State<ProductScanner> {
 
       // Toggle camera index
       _selectedCameraIndex = (_selectedCameraIndex + 1) % cameras.length;
+      // Restart scanning
+
+      // scannedBarcode = null;
+      // isPriceScanning = false;
+      // productList = null;
+      // isProcessing = false;
+      // isManualInputRequested = false;
+      // matchedProduct = null;
+      _resettingValues();
 
       setState(() {
         _scanningState = ScanningState.preparingCamera;
@@ -151,8 +167,11 @@ class ProductScannerState extends State<ProductScanner> {
       await _cameraController
           ?.lockCaptureOrientation(DeviceOrientation.portraitUp);
 
-      // Restart scanning
-      _startScanning();
+      // Instead of calling _handleRefresh, return a new productDetails() call
+      setState(() {
+        _isScanning = false;
+      });
+      await _startScanning(); // This will create a new completer and start fresh
     } catch (e) {
       print("Error switching camera: $e");
     }
@@ -176,7 +195,7 @@ class ProductScannerState extends State<ProductScanner> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error scanning product: ${e.toString()}')),
+          SnackBar(content: Text('Scanning Canceled.')), /*${e.toString()}*/
         );
       }
     } finally {
@@ -257,12 +276,6 @@ class ProductScannerState extends State<ProductScanner> {
       }
 
       final completer = Completer<ProductModel?>();
-      String? scannedBarcode;
-      bool isPriceScanning = false;
-      List<ProductModel>? productList;
-      ProductModel? matchedProduct;
-      bool isProcessing = false;
-      bool isManualInputRequested = false;
 
       print('SCANNING STARTED');
       setState(() {
@@ -312,41 +325,94 @@ class ProductScannerState extends State<ProductScanner> {
                   context: context,
                   barrierDismissible: false,
                   builder: (BuildContext context) {
-                    return AlertDialog(
-                      title: Text(
-                        response.error ?? 'Scanning Failed',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      content: Text(
-                        'Do you want to scan again ?',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                      actionsAlignment: MainAxisAlignment.spaceBetween,
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: Text(
-                            'Cancel',
-                            style: TextStyle(
-                                color: Colors.green[900],
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold),
+                    // Create timer
+                    Timer? dialogTimer;
+
+                    // Start timer when dialog opens
+                    dialogTimer = Timer(Duration(seconds: 5), () {
+                      if (Navigator.canPop(context)) {
+                        Navigator.of(context).pop(false);
+                      }
+                      dialogTimer?.cancel(); // Cancel timer after use
+                    });
+
+                    return PopScope(
+                      // This replaces WillPopScope in newer Flutter versions
+                      onPopInvoked: (didPop) {
+                        // Cancel timer when dialog is closed
+                        dialogTimer?.cancel();
+                        return;
+                      },
+                      child: AlertDialog(
+                        title: Text(
+                          response.error ?? 'Scanning Failed',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                        TextButton(
-                            onPressed: () => Navigator.of(context).pop(true),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TweenAnimationBuilder(
+                              tween: Tween(begin: 1.0, end: 0.0),
+                              duration: Duration(seconds: 5),
+                              builder: (context, double value, child) {
+                                Color progressColor = Color.lerp(
+                                  Colors.red[
+                                      900], // End color (when value is near 0)
+                                  Colors.red[
+                                      50], // Start color (when value is near 1)
+                                  value,
+                                )!;
+                                return LinearProgressIndicator(
+                                  value: value,
+                                  backgroundColor: Colors.grey[200],
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      progressColor),
+                                );
+                              },
+                            ),
+                            Text(
+                              'Do you want to scan again ?',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                            SizedBox(height: 10),
+                          ],
+                        ),
+                        actionsAlignment: MainAxisAlignment.spaceBetween,
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              dialogTimer
+                                  ?.cancel(); // Cancel timer before popping
+                              Navigator.of(context).pop(false);
+                            },
+                            child: Text(
+                              'Cancel',
+                              style: TextStyle(
+                                  color: Colors.green[900],
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              dialogTimer
+                                  ?.cancel(); // Cancel timer before popping
+                              Navigator.of(context).pop(true);
+                            },
                             child: Text(
                               'Ok',
                               style: TextStyle(
                                   color: Colors.green[900],
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold),
-                            )),
-                      ],
+                            ),
+                          ),
+                        ],
+                      ),
                     );
                   },
                 );
@@ -357,19 +423,20 @@ class ProductScannerState extends State<ProductScanner> {
                     await _cameraController!.stopImageStream();
                   }
 
-                  // Start a completely new scan cycle
-                  await Future.delayed(Duration(milliseconds: 500));
-                  scannedBarcode = null;
-                  isPriceScanning = false;
-                  productList = null;
-                  isProcessing = false;
-                  isManualInputRequested = false;
-                  matchedProduct = null;
+                  // await Future.delayed(Duration(milliseconds: 500));
+                  // scannedBarcode = null;
+                  // isPriceScanning = false;
+                  // productList = null;
+                  // isProcessing = false;
+                  // isManualInputRequested = false;
+                  // matchedProduct = null;
+                  _resettingValues();
                   setState(() {
                     _isScanning = false;
                   });
-                  // Instead of calling _handleRefresh, return a new productDetails() call
-                  await _startScanning(); // This will create a new completer and start fresh
+
+                  await _startScanning();
+
                   return;
                 } else {
                   // User chose to go back
@@ -384,12 +451,6 @@ class ProductScannerState extends State<ProductScanner> {
               }
 
               productList = response.data;
-              // Modified filtering logic to handle barcode variations
-              // productList = productList!
-              //     .where((product) =>
-              //         product.barcode?.split(':')[0].replaceAll(' ', '') ==
-              //         barcode.replaceAll(' ', ''))
-              //     .toList();
               print(productList);
               if (productList!.isEmpty) {
                 if (_cameraController!.value.isStreamingImages) {
@@ -678,13 +739,22 @@ class ProductScannerState extends State<ProductScanner> {
     }
   }
 
-  Future<void> _handleRefresh() async {
-    setState(() {
-      _isScanning = false;
-      _scanningState = ScanningState.scanningBarcode;
-      _statusMessage = "Point camera at product barcode";
-    });
-    await _startScanning();
+  Future<void> _resettingValues() async {
+    // Start a completely new scan cycle
+    await Future.delayed(Duration(milliseconds: 500));
+    scannedBarcode = null;
+    isPriceScanning = false;
+    productList = null;
+    isProcessing = false;
+    isManualInputRequested = false;
+    matchedProduct = null;
+
+    // setState(() {
+    //   _isScanning = false;
+    //   _scanningState = ScanningState.scanningBarcode;
+    //   _statusMessage = "Point camera at product barcode";
+    // });
+    // await _startScanning();
   }
 
   bool get isFrontCamera {
